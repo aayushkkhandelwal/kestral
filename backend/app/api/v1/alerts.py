@@ -67,8 +67,8 @@ def get_alert(
 def acknowledge_alert(
     alert_id: uuid.UUID,
     ack_in: AlertAcknowledge,
-    current_user: Annotated[User, Depends(require_permission("alerts:write"))],
-    db: Annotated[Session, Depends(get_db)]
+    db: Annotated[Session, Depends(get_db)],
+    current_user: Annotated[User | None, Depends(get_optional_current_user)] = None
 ):
     service = AlertService(db)
     return service.acknowledge_alert(alert_id, ack_in, current_user=current_user)

@@ -32,7 +32,7 @@ class AlertRepository(BaseRepository[Alert]):
     def acknowledge_alert(
         self,
         alert_id: uuid.UUID,
-        user_id: uuid.UUID,
+        user_id: Optional[uuid.UUID] = None,
         note: Optional[str] = None
     ) -> Optional[Alert]:
         alert = self.get_by_id(alert_id)

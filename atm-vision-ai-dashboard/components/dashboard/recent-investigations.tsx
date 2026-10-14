@@ -19,7 +19,7 @@ export function RecentInvestigations({
   investigations?: Investigation[]
   onSelectInvestigation?: (inv: Investigation) => void
 }) {
-  const list = investigations && investigations.length > 0 ? investigations : RECENT_INVESTIGATIONS
+  const list = investigations || []
 
   return (
     <section aria-labelledby="investigations-heading" className="flex flex-col gap-4">
@@ -49,7 +49,14 @@ export function RecentInvestigations({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {list.map((inv) => (
+            {list.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center text-xs text-muted-foreground">
+                  No surveillance cases opened yet. Upload and process a video to begin forensic analysis.
+                </TableCell>
+              </TableRow>
+            ) : (
+              list.map((inv) => (
               <TableRow key={inv.id} className="transition-colors">
                 <TableCell className="py-3.5 pl-5 font-mono text-xs">{inv.id}</TableCell>
                 <TableCell className="max-w-[200px] truncate">{inv.atm}</TableCell>
@@ -79,7 +86,7 @@ export function RecentInvestigations({
                   </Button>
                 </TableCell>
               </TableRow>
-            ))}
+            )))}
           </TableBody>
         </Table>
       </div>

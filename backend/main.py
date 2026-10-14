@@ -29,11 +29,13 @@ RESULTS_DIR = os.path.join(BASE_DIR, "results")
 FACES_DIR = os.path.join(BASE_DIR, "faces")
 FRAMES_DIR = os.path.join(BASE_DIR, "frames")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+CLIPS_DIR = os.path.join(BASE_DIR, "clips")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
 os.makedirs(FACES_DIR, exist_ok=True)
 os.makedirs(FRAMES_DIR, exist_ok=True)
 os.makedirs(EXPORTS_DIR, exist_ok=True)
+os.makedirs(CLIPS_DIR, exist_ok=True)
 
 app = FastAPI(
     title="Kestral Video Intelligence & Best-Frame Evidence API",
@@ -56,6 +58,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 app.mount("/faces", StaticFiles(directory=FACES_DIR), name="faces")
 app.mount("/frames", StaticFiles(directory=FRAMES_DIR), name="frames")
 app.mount("/exports", StaticFiles(directory=EXPORTS_DIR), name="exports")
+app.mount("/clips", StaticFiles(directory=CLIPS_DIR), name="clips")
 
 # Include Clean Architecture Enterprise API V1 Router
 try:
@@ -526,7 +529,7 @@ def get_aggregate_stats():
     total_hq = sum(h.get("summary", {}).get("high_quality_evidence_count", 0) for h in history)
     
     qualities = [h.get("summary", {}).get("average_best_quality", 0) for h in history if h.get("summary", {}).get("average_best_quality", 0) > 0]
-    avg_quality = round(sum(qualities) / len(qualities), 1) if qualities else 78.4
+    avg_quality = round(sum(qualities) / len(qualities), 1) if qualities else 0.0
 
     return {
         "total_videos_analyzed": total_videos,

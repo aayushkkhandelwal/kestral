@@ -7,6 +7,12 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --color-hero: var(--hero);
+  --color-hero-foreground: var(--hero-foreground);
+  --color-sky: var(--sky);
+  --color-sky-foreground: var(--sky-foreground);
+  --color-hero-glow: var(--hero-glow);
+  --color-info: var(--info);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -85,6 +91,13 @@
   --sidebar-accent-foreground: oklch(0.4 0.1 45);
   --sidebar-border: oklch(0.918 0.008 75);
   --sidebar-ring: oklch(0.58 0.14 45);
+  --hero: oklch(0.21 0.02 45);
+  --hero-foreground: oklch(0.98 0.005 80);
+  --hero-glow: oklch(0.55 0.12 45 / 0.55);
+  --sky: oklch(0.985 0.004 260);
+  --sky-foreground: oklch(0.23 0.025 45);
+  --info: oklch(0.5 0.08 255);
+  --dot: oklch(0.2 0.02 50 / 0.1);
 }
 
 .dark {
@@ -122,6 +135,13 @@
   --sidebar-accent-foreground: oklch(0.96 0.003 255);
   --sidebar-border: oklch(1 0 0 / 7%);
   --sidebar-ring: oklch(0.64 0.18 257);
+  --hero: oklch(0.965 0.006 260);
+  --hero-foreground: oklch(0.16 0.01 260);
+  --hero-glow: oklch(0.78 0.1 258 / 0.75);
+  --sky: oklch(1 0 0);
+  --sky-foreground: oklch(0.18 0 0);
+  --info: oklch(0.7 0.01 260);
+  --dot: oklch(1 0 0 / 0);
 }
 
 @layer base {
@@ -153,3 +173,107 @@
 @utility animate-scan {
   animation: scan-sweep 3.2s linear infinite;
 }
+
+@utility dot-grid {
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+@utility line-grid {
+  background-image:
+    linear-gradient(currentColor 1px, transparent 1px),
+    linear-gradient(90deg, currentColor 1px, transparent 1px);
+  background-size: 36px 36px;
+}
+
+@utility edge-fade {
+  mask-image:
+    linear-gradient(to right, transparent, black 7%, black 93%, transparent),
+    linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+  mask-composite: intersect;
+}
+
+@keyframes kestrel-glide {
+  0%,
+  100% {
+    transform: translate3d(0, calc(var(--bob, 1) * -10px), 0) rotate(calc(var(--bob, 1) * -1.2deg));
+  }
+  50% {
+    transform: translate3d(calc(var(--bob, 1) * 8px), calc(var(--bob, 1) * 12px), 0)
+      rotate(calc(var(--bob, 1) * 1.4deg));
+  }
+}
+
+@keyframes wing-flap-left {
+  0%,
+  100% {
+    transform: rotate(calc(var(--flap, 1) * 9deg)) scaleY(1);
+  }
+  50% {
+    transform: rotate(calc(var(--flap, 1) * -11deg)) scaleY(calc(1 - var(--flap, 1) * 0.1));
+  }
+}
+
+@keyframes wing-flap-right {
+  0%,
+  100% {
+    transform: rotate(calc(var(--flap, 1) * -8deg)) scaleY(1);
+  }
+  50% {
+    transform: rotate(calc(var(--flap, 1) * 10deg)) scaleY(calc(1 - var(--flap, 1) * 0.1));
+  }
+}
+
+@keyframes sonar-pulse {
+  from {
+    transform: translate(-50%, -50%) scale(0.15);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.55;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+.animate-flap-left {
+  animation: wing-flap-left 1.2s ease-in-out infinite;
+}
+
+.animate-flap-right {
+  animation: wing-flap-right 1.2s ease-in-out infinite;
+}
+
+.animate-sonar {
+  animation: sonar-pulse 6s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+
+@keyframes wind-streak {
+  from {
+    transform: translateX(110vw);
+  }
+  to {
+    transform: translateX(-40vw);
+  }
+}
+
+.animate-glide {
+  animation: kestrel-glide 5s ease-in-out infinite;
+}
+
+.animate-wind {
+  animation: wind-streak linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-glide,
+  .animate-wind,
+  .animate-flap-left,
+  .animate-flap-right,
+  .animate-sonar {
+    animation: none;
+  }
+}
+

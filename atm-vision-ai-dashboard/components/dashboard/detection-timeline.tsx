@@ -26,7 +26,7 @@ export function DetectionTimeline({
         quality: t.quality_score,
         isBest: false,
       }))
-    : FACE_DETECTIONS.map((d) => ({ ...d, isBest: d.seconds === 104 }))
+    : []
 
   // Find best quality item
   let highestQuality = -1
@@ -41,7 +41,7 @@ export function DetectionTimeline({
     detections[bestIdx].isBest = true
   }
 
-  const tracksCount = hasRealTracks ? tracks.length : 4
+  const tracksCount = hasRealTracks ? tracks.length : 0
 
   return (
     <section aria-labelledby="timeline-heading" className="flex flex-col gap-4">

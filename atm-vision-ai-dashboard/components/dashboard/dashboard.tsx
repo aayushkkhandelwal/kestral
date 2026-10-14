@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import axios from 'axios'
 import { API_BASE_URL } from '@/lib/config'
+import { cn } from '@/lib/utils'
 import {
   PIPELINE_STEPS,
   type EvidenceTrack,
@@ -27,7 +28,7 @@ import { VideoAnalysisView } from './video-analysis-view'
 import { LiveCameraView } from './live-camera-view'
 import { ModelEvaluationView } from './model-evaluation-view'
 
-export function Dashboard() {
+export function Dashboard({ className }: { className?: string } = {}) {
   const [activeView, setActiveView] = useState<string>('Dashboard')
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [video, setVideo] = useState<UploadedVideo | null>(null)
@@ -321,7 +322,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="flex min-h-svh bg-background">
+    <div className={cn('flex min-h-svh bg-background', className)}>
       <AppSidebar
         mobileOpen={mobileNavOpen}
         onClose={() => setMobileNavOpen(false)}

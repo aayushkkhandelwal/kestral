@@ -8,6 +8,10 @@ from app.models.investigation_case import InvestigationCase, CaseStatus
 from app.models.case_evidence import CaseEvidence
 from app.models.alert import Alert, AlertSeverity, AlertStatus
 from app.models.audit_log import AuditLog
+from app.models.monitored_zone import MonitoredZone
+from app.models.surveillance_event import SurveillanceEvent, EventType, EventStatus
+from app.models.evidence_clip import EvidenceClip
+from app.models.event_screenshot import EventScreenshot
 
 __all__ = [
     "Base",
@@ -26,4 +30,10 @@ __all__ = [
     "AlertSeverity",
     "AlertStatus",
     "AuditLog",
+    "MonitoredZone",
+    "SurveillanceEvent",
+    "EventType",
+    "EventStatus",
+    "EvidenceClip",
+    "EventScreenshot",
 ]

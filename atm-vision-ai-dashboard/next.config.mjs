@@ -31,6 +31,18 @@ const nextConfig = {
         source: '/uploads/:path*',
         destination: 'http://127.0.0.1:8000/uploads/:path*',
       },
+      {
+        source: '/clips/:path*',
+        destination: 'http://127.0.0.1:8000/clips/:path*',
+      },
+      {
+        source: '/frames/:path*',
+        destination: 'http://127.0.0.1:8000/frames/:path*',
+      },
+      {
+        source: '/exports/:path*',
+        destination: 'http://127.0.0.1:8000/exports/:path*',
+      },
     ]
   },
 }

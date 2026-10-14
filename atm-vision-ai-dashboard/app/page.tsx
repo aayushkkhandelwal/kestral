@@ -1,5 +1,5 @@
-import { Dashboard } from '@/components/dashboard/dashboard'
+import { KestrelLanding } from '@/components/landing/kestrel-landing'
 
 export default function Page() {
-  return <Dashboard />
+  return <KestrelLanding />
 }

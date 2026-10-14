@@ -43,6 +43,8 @@ backend/frames/*
 !backend/frames/.gitkeep
 backend/exports/*
 !backend/exports/.gitkeep
+backend/clips/*
+!backend/clips/.gitkeep
 
 *.db
 *.sqlite

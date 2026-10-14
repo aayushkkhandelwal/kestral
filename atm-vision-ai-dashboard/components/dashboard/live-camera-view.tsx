@@ -111,6 +111,7 @@ export type SecurityEvent = {
   bbox?: number[]
   faceBbox?: number[]
   landmarks?: number[][]
+  alertId?: string
 }
 
 export function LiveCameraView() {
@@ -156,6 +157,16 @@ export function LiveCameraView() {
     setTimeout(() => {
       setToastMessage((cur) => (cur?.includes(`Subject #${eventObj.trackId}`) ? null : cur))
     }, 4500)
+
+    if (eventObj.alertId) {
+      axios
+        .post(`${API_BASE_URL}/api/v1/alerts/${eventObj.alertId}/acknowledge`, {
+          note: `Acknowledged from live camera dashboard at ${ackTime}`,
+        })
+        .catch((err) => {
+          console.warn('[LiveCamera] Failed to acknowledge alert in database:', err.message)
+        })
+    }
   }, [])
 
   // Performance Telemetry
@@ -461,6 +472,36 @@ export function LiveCameraView() {
 
                   setDetectionHistory((prev) => [eventObj, ...prev.slice(0, 49)])
                   setBannerAlert(eventObj)
+
+                  // Persist event to PostgreSQL database alerts table
+                  axios
+                    .post(`${API_BASE_URL}/api/v1/alerts`, {
+                      alert_type: 'stationary_dwell_limit_exceeded',
+                      severity: 'critical',
+                      message: `Subject #${tid} has remained continuously stationary in ATM / camera field of view for ${Math.floor(existing.continuousSeconds)} seconds (Triggered at ${eventObj.alertTime})`,
+                      alert_metadata: {
+                        track_id: tid,
+                        duration_sec: Math.floor(existing.continuousSeconds),
+                        confidence: person.confidence,
+                        has_face: Boolean(person.face_bbox),
+                        face_confidence: person.face_confidence,
+                        first_seen: new Date(existing.firstSeenTime * 1000).toISOString(),
+                        alert_time: new Date(nowSec * 1000).toISOString(),
+                      },
+                    })
+                    .then((res) => {
+                      const dbId = res.data?.id || res.data?.alert_id
+                      if (dbId) {
+                        eventObj.alertId = dbId
+                        setBannerAlert((curr) => (curr?.id === eventObj.id ? { ...curr, alertId: dbId } : curr))
+                        setDetectionHistory((prev) =>
+                          prev.map((item) => (item.id === eventObj.id ? { ...item, alertId: dbId } : item))
+                        )
+                      }
+                    })
+                    .catch((err) => {
+                      console.warn('[LiveCamera] Failed to persist alert to database:', err.message)
+                    })
 
                   if (soundEnabled) {
                     playAlertChime()

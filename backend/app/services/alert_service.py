@@ -44,6 +44,8 @@ class AlertService:
             }
         )
 
+        self.db.commit()
+        self.db.refresh(alert)
         return alert
 
     def get_by_id(self, alert_id: uuid.UUID) -> Alert:
@@ -72,11 +74,11 @@ class AlertService:
         self,
         alert_id: uuid.UUID,
         ack_in: AlertAcknowledge,
-        current_user: User
+        current_user: User | None = None
     ) -> Alert:
         alert = self.alert_repo.acknowledge_alert(
             alert_id=alert_id,
-            user_id=current_user.id,
+            user_id=current_user.id if current_user else None,
             note=ack_in.note
         )
         if not alert:
@@ -85,11 +87,13 @@ class AlertService:
         self.audit_repo.log_action(
             action="ACKNOWLEDGE_ALERT",
             resource="Alert",
-            user_id=current_user.id,
+            user_id=current_user.id if current_user else None,
             metadata={
                 "alert_id": str(alert_id),
                 "note": ack_in.note
             }
         )
 
+        self.db.commit()
+        self.db.refresh(alert)
         return alert

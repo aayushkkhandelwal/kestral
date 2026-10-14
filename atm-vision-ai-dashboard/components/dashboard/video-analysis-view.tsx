@@ -24,7 +24,24 @@ import {
   X,
   UserCheck,
   FolderOpen,
+  Camera,
+  FastForward,
+  Rewind,
+  ShieldCheck,
+  FileArchive,
+  LogIn,
+  LogOut,
+  CreditCard,
+  Crosshair,
+  Copy,
+  Check,
+  Layers,
+  Radio,
+  ChevronLeft,
+  ChevronRight,
+  Maximize2
 } from 'lucide-react'
+import axios from 'axios'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { API_BASE_URL } from '@/lib/config'
@@ -46,6 +63,34 @@ export type TaskTelemetry = {
   tracksCount: number
   fps: number
   error?: string
+}
+
+export interface SurveillanceEventItem {
+  event_id: string
+  camera_id?: string
+  video_id?: string
+  track_id?: string
+  zone_id?: string
+  person_number?: number
+  zone_name?: string
+  event_type: 'person_entry' | 'person_exit' | 'transaction_start' | 'inferred_transaction' | string
+  event_timestamp: string
+  video_timestamp_sec: number
+  source_frame: number
+  confidence: number
+  source: string
+  event_metadata?: Record<string, any>
+  processing_status?: string
+  clip?: {
+    clip_id: string
+    clip_path: string
+    clip_start_sec: number
+    clip_end_sec: number
+    pre_event_duration: number
+    post_event_duration: number
+    sha256: string
+    file_size_bytes: number
+  } | null
 }
 
 export function VideoAnalysisView({
@@ -93,6 +138,143 @@ export function VideoAnalysisView({
 
   // Evidence Dossier Inspector modal state
   const [inspectingTrack, setInspectingTrack] = useState<EvidenceTrack | null>(null)
+
+  // Event Review System state
+  const [surveillanceEvents, setSurveillanceEvents] = useState<SurveillanceEventItem[]>([])
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
+  const [playerMode, setPlayerMode] = useState<'stream' | 'clip'>('stream')
+  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1)
+  const [capturingFrame, setCapturingFrame] = useState<boolean>(false)
+  const [exportingPackage, setExportingPackage] = useState<boolean>(false)
+  const [copiedHash, setCopiedHash] = useState<string | null>(null)
+  const [eventFilter, setEventFilter] = useState<string>('all')
+  const [capturedScreenshots, setCapturedScreenshots] = useState<any[]>([])
+  const [showEventRibbon, setShowEventRibbon] = useState<boolean>(true)
+
+  // Fetch surveillance events
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/v1/events?limit=50`)
+        const items: SurveillanceEventItem[] = res.data.items || []
+        setSurveillanceEvents(items)
+        if (items.length > 0 && !selectedEventId) {
+          setSelectedEventId(items[0].event_id)
+        }
+      } catch (err) {
+        console.warn('Failed to fetch events in VideoAnalysisView:', err)
+      }
+    }
+    fetchEvents()
+  }, [activeResult])
+
+  const currentEvent = useMemo(() => {
+    return surveillanceEvents.find((e) => e.event_id === selectedEventId) || null
+  }, [surveillanceEvents, selectedEventId])
+
+  const filteredSurveillanceEvents = useMemo(() => {
+    if (eventFilter === 'all') return surveillanceEvents
+    return surveillanceEvents.filter((e) => e.event_type === eventFilter)
+  }, [surveillanceEvents, eventFilter])
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackSpeed(speed)
+    if (videoRef.current) {
+      videoRef.current.playbackRate = speed
+    }
+  }
+
+  const handlePrevEvent = () => {
+    if (surveillanceEvents.length === 0) return
+    const curIdx = surveillanceEvents.findIndex((e) => e.event_id === selectedEventId)
+    const prevIdx = curIdx > 0 ? curIdx - 1 : surveillanceEvents.length - 1
+    const target = surveillanceEvents[prevIdx]
+    setSelectedEventId(target.event_id)
+    if (playerMode === 'stream') {
+      seekTo(target.video_timestamp_sec)
+    }
+  }
+
+  const handleNextEvent = () => {
+    if (surveillanceEvents.length === 0) return
+    const curIdx = surveillanceEvents.findIndex((e) => e.event_id === selectedEventId)
+    const nextIdx = curIdx < surveillanceEvents.length - 1 ? curIdx + 1 : 0
+    const target = surveillanceEvents[nextIdx]
+    setSelectedEventId(target.event_id)
+    if (playerMode === 'stream') {
+      seekTo(target.video_timestamp_sec)
+    }
+  }
+
+  const handleJumpToEvent = (ev: SurveillanceEventItem) => {
+    setSelectedEventId(ev.event_id)
+    if (playerMode === 'clip') {
+      if (videoRef.current && ev.clip?.pre_event_duration) {
+        videoRef.current.currentTime = ev.clip.pre_event_duration
+        setCurrentTime(ev.clip.pre_event_duration)
+      }
+    } else {
+      seekTo(ev.video_timestamp_sec)
+    }
+  }
+
+  const handleCaptureFrame = async () => {
+    try {
+      setCapturingFrame(true)
+      let b64: string | undefined = undefined
+      if (videoRef.current) {
+        const canvas = document.createElement('canvas')
+        canvas.width = videoRef.current.videoWidth || 640
+        canvas.height = videoRef.current.videoHeight || 480
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height)
+          b64 = canvas.toDataURL('image/jpeg', 0.9)
+        }
+      }
+      const targetEvent = currentEvent || (surveillanceEvents.length > 0 ? surveillanceEvents[0] : null)
+      if (targetEvent) {
+        const res = await axios.post(`${API_BASE_URL}/api/v1/events/${targetEvent.event_id}/screenshots`, {
+          video_timestamp_sec: currentTime,
+          image_base64: b64
+        })
+        setCapturedScreenshots((prev) => [res.data, ...prev])
+      }
+    } catch (err: any) {
+      console.error('Capture frame error:', err)
+    } finally {
+      setCapturingFrame(false)
+    }
+  }
+
+  const handleExportForensicDossier = async () => {
+    try {
+      setExportingPackage(true)
+      const evIds = currentEvent ? [currentEvent.event_id] : surveillanceEvents.map((e) => e.event_id)
+      const res = await axios.post(`${API_BASE_URL}/api/v1/events/export`, {
+        event_ids: evIds,
+        include_clips: true,
+        include_screenshots: true,
+        include_audit_manifest: true
+      })
+      if (res.data?.download_url) {
+        const url = res.data.download_url.startsWith('http')
+          ? res.data.download_url
+          : `${API_BASE_URL}${res.data.download_url}`
+        window.open(url, '_blank')
+      }
+    } catch (err: any) {
+      alert(`Export failed: ${err?.response?.data?.detail || err.message}`)
+    } finally {
+      setExportingPackage(false)
+    }
+  }
+
+  const copyHashToClipboard = (hash: string) => {
+    navigator.clipboard.writeText(hash)
+    setCopiedHash(hash)
+    setTimeout(() => setCopiedHash(null), 2000)
+  }
 
   // Synchronize tracks list from activeResult
   const tracks: EvidenceTrack[] = useMemo(() => {
@@ -482,9 +664,6 @@ export function VideoAnalysisView({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="border-emerald-500/30 bg-emerald-500/20 font-mono text-xs text-emerald-300">
-              {activeResult.summary?.unique_persons_tracked || tracks.length} Persons Tracked
-            </Badge>
             <Badge className="border-cyan-500/30 bg-cyan-500/20 font-mono text-xs text-cyan-300">
               Avg Score:{' '}
               {Math.round(
@@ -500,55 +679,193 @@ export function VideoAnalysisView({
         </div>
       )}
 
-      {/* 5. INTERACTIVE VIDEO PLAYER PREVIEW */}
+      {/* 5. INTERACTIVE VIDEO PLAYER PREVIEW WITH EVENT REVIEW INTEGRATION */}
       {videoSourceUrl && (
         <div className="flex flex-col gap-4 rounded-2xl border bg-card p-5 shadow-sm">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div className="flex items-center gap-2">
+          {/* Player Header with Stream / Clip Mode Toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
+            <div className="flex items-center gap-2.5">
               <Film className="size-4 text-cyan-400" />
-              <h3 className="text-sm font-bold text-foreground">Surveillance Stream Player</h3>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">
+                  {playerMode === 'clip' && currentEvent
+                    ? `Event Clip: ${currentEvent.event_type.replace('_', ' ').toUpperCase()} — Subject #${currentEvent.person_number || '?'}`
+                    : 'Surveillance Stream Player'}
+                </h3>
+                <p className="text-[11px] text-muted-foreground">
+                  {playerMode === 'clip'
+                    ? '10-second pre-event & 10-second post-event context buffer'
+                    : 'Full multi-subject surveillance recording with event marker synchronization'}
+                </p>
+              </div>
             </div>
-            <span className="font-mono text-xs text-muted-foreground">
-              {formatTimestamp(currentTime)} / {formatTimestamp(duration)}
-            </span>
+
+            <div className="flex items-center gap-2">
+              {/* Stream vs 20s Context Clip Mode Toggle */}
+              {currentEvent?.clip && (
+                <div className="flex items-center rounded-lg border bg-muted/60 p-0.5 text-xs font-medium">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlayerMode('stream')
+                      if (videoRef.current && currentEvent) {
+                        videoRef.current.currentTime = currentEvent.video_timestamp_sec
+                      }
+                    }}
+                    className={cn(
+                      'rounded-md px-2.5 py-1 transition-colors',
+                      playerMode === 'stream'
+                        ? 'bg-background font-semibold text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    Full Stream
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPlayerMode('clip')
+                      if (videoRef.current && currentEvent.clip?.pre_event_duration) {
+                        videoRef.current.currentTime = currentEvent.clip.pre_event_duration
+                      }
+                    }}
+                    className={cn(
+                      'rounded-md px-2.5 py-1 transition-colors',
+                      playerMode === 'clip'
+                        ? 'bg-cyan-500 font-semibold text-white shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    20s Context Clip
+                  </button>
+                </div>
+              )}
+
+              <span className="font-mono text-xs text-muted-foreground">
+                {formatTimestamp(currentTime)} / {formatTimestamp(duration)}
+              </span>
+            </div>
           </div>
 
+          {/* Video Screen */}
           <div className="relative aspect-video w-full overflow-hidden rounded-xl border bg-black shadow-inner flex items-center justify-center">
             <video
               ref={videoRef}
-              src={videoSourceUrl}
+              src={
+                playerMode === 'clip' && currentEvent?.clip?.clip_path
+                  ? currentEvent.clip.clip_path.startsWith('http')
+                    ? currentEvent.clip.clip_path
+                    : `${API_BASE_URL}${currentEvent.clip.clip_path}`
+                  : videoSourceUrl
+              }
               className="size-full object-contain"
               onTimeUpdate={() => {
                 if (videoRef.current) setCurrentTime(videoRef.current.currentTime)
               }}
               onLoadedMetadata={() => {
-                if (videoRef.current) setDuration(videoRef.current.duration || 0)
+                if (videoRef.current) {
+                  setDuration(videoRef.current.duration || 0)
+                  videoRef.current.playbackRate = playbackSpeed
+                  if (playerMode === 'clip' && currentEvent?.clip?.pre_event_duration) {
+                    videoRef.current.currentTime = currentEvent.clip.pre_event_duration
+                  }
+                }
               }}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               playsInline
             />
 
+            {/* Forensic Overlay HUD */}
             <div className="absolute top-3 left-3 flex items-center gap-2 rounded-md bg-black/75 px-2.5 py-1 font-mono text-[11px] text-white backdrop-blur-md">
               <span className="size-1.5 rounded-full bg-red-500 animate-pulse" />
               <span>{formatTimestamp(currentTime)}</span>
+              <span className="text-zinc-500">|</span>
+              <span className="text-zinc-300">
+                {playerMode === 'clip' ? 'EVENT BUFFER MODE' : 'LIVE SURVEILLANCE FEED'}
+              </span>
             </div>
+
+            {/* Event Context HUD if in clip mode */}
+            {playerMode === 'clip' && currentEvent?.clip && (
+              <div className="absolute top-3 right-3 flex items-center gap-1.5 rounded-full bg-amber-500/90 px-3 py-1 font-mono text-[11px] font-semibold text-black shadow-md backdrop-blur-md">
+                <Crosshair className="size-3.5" />
+                <span>EVENT AT {currentEvent.clip.pre_event_duration.toFixed(1)}s</span>
+              </div>
+            )}
           </div>
 
-          {/* Transport Controls */}
-          <div className="flex flex-col gap-2">
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              step="0.05"
-              value={currentTime}
-              onChange={(e) => seekTo(parseFloat(e.target.value))}
-              className="h-1.5 w-full cursor-pointer accent-cyan-500"
-            />
+          {/* Timeline & Scrubber with Event Markers */}
+          <div className="flex flex-col gap-1.5">
+            {/* Visual Pre/Post Event Context in Clip Mode */}
+            {playerMode === 'clip' && currentEvent?.clip && (
+              <div className="flex items-center justify-between text-[10px] font-mono">
+                <span className="text-emerald-500 dark:text-emerald-400">
+                  ◀ 10s Pre-Event Context ({currentEvent.clip.pre_event_duration.toFixed(1)}s)
+                </span>
+                <span className="text-cyan-500 dark:text-cyan-400">
+                  10s Post-Event Context ({currentEvent.clip.post_event_duration.toFixed(1)}s) ▶
+                </span>
+              </div>
+            )}
 
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-1.5">
+            {/* Scrubber Container with Event Pins */}
+            <div className="relative w-full py-1">
+              {/* Event Marker Pins along the timeline (in Full Stream mode) */}
+              {playerMode === 'stream' && duration > 0 && (
+                <div className="pointer-events-none absolute inset-x-0 top-0.5 h-3">
+                  {surveillanceEvents.map((ev) => {
+                    const pct = Math.max(0, Math.min(100, (ev.video_timestamp_sec / duration) * 100))
+                    let dotColor = 'bg-emerald-500'
+                    if (ev.event_type === 'person_exit') dotColor = 'bg-rose-500'
+                    if (ev.event_type === 'transaction_start') dotColor = 'bg-amber-500'
+
+                    return (
+                      <div
+                        key={ev.event_id}
+                        className="pointer-events-auto absolute top-1 -translate-x-1/2 cursor-pointer transition-transform hover:scale-150"
+                        style={{ left: `${pct}%` }}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleJumpToEvent(ev)
+                        }}
+                        title={`${ev.event_type.replace('_', ' ').toUpperCase()} (Subject #${ev.person_number}) at ${ev.video_timestamp_sec.toFixed(1)}s`}
+                      >
+                        <div className={cn('size-2.5 rounded-full ring-2 ring-background', dotColor)} />
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Event Marker Pin in Clip mode */}
+              {playerMode === 'clip' && currentEvent?.clip && duration > 0 && (
+                <div
+                  className="pointer-events-none absolute -top-1 z-10 flex flex-col items-center -translate-x-1/2"
+                  style={{
+                    left: `${(currentEvent.clip.pre_event_duration / duration) * 100}%`
+                  }}
+                >
+                  <div className="size-2.5 rounded-full bg-amber-400 ring-2 ring-black" />
+                  <div className="h-4 w-0.5 bg-amber-400/80" />
+                </div>
+              )}
+
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                step="0.05"
+                value={currentTime}
+                onChange={(e) => seekTo(parseFloat(e.target.value))}
+                className="h-1.5 w-full cursor-pointer accent-cyan-500"
+              />
+            </div>
+
+            {/* Transport Controls Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-1">
+              {/* Playback & Seeking */}
+              <div className="flex items-center gap-1">
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -557,6 +874,16 @@ export function VideoAnalysisView({
                 >
                   <RotateCcw className="size-3.5" />
                 </Button>
+
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => seekTo(Math.max(0, currentTime - 5))}
+                  title="Rewind 5s"
+                >
+                  <Rewind className="size-3.5" />
+                </Button>
+
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -565,6 +892,7 @@ export function VideoAnalysisView({
                 >
                   <SkipBack className="size-3.5" />
                 </Button>
+
                 <Button size="sm" onClick={togglePlay} className="h-8 gap-1.5 px-3">
                   {isPlaying ? (
                     <Pause className="size-3.5" />
@@ -573,6 +901,7 @@ export function VideoAnalysisView({
                   )}
                   <span>{isPlaying ? 'Pause' : 'Play'}</span>
                 </Button>
+
                 <Button
                   variant="outline"
                   size="icon-sm"
@@ -581,11 +910,222 @@ export function VideoAnalysisView({
                 >
                   <SkipForward className="size-3.5" />
                 </Button>
+
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  onClick={() => seekTo(Math.min(duration, currentTime + 5))}
+                  title="Forward 5s"
+                >
+                  <FastForward className="size-3.5" />
+                </Button>
+
+                {/* Event Jumpers */}
+                {surveillanceEvents.length > 0 && (
+                  <div className="ml-1 flex items-center gap-1 border-l pl-2">
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={handlePrevEvent}
+                      title="Jump to Previous Event"
+                    >
+                      <ChevronLeft className="size-3.5" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon-sm"
+                      onClick={handleNextEvent}
+                      title="Jump to Next Event"
+                    >
+                      <ChevronRight className="size-3.5" />
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <div className="font-mono text-xs text-muted-foreground">
-                Click any subject card below to jump player to that subject
+              {/* Playback Speeds: 0.5x, 1x, 2x */}
+              <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-0.5">
+                {[0.5, 1, 2].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handleSpeedChange(s)}
+                    className={cn(
+                      'rounded px-2 py-0.5 font-mono text-[11px] font-medium transition-colors',
+                      playbackSpeed === s
+                        ? 'bg-cyan-500 font-bold text-white shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {s}×
+                  </button>
+                ))}
               </div>
+
+              {/* Right Side: Capture Frame & Export Dossier */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCaptureFrame}
+                  disabled={capturingFrame}
+                  className="gap-1.5 text-xs"
+                >
+                  <Camera className={cn('size-3.5', capturingFrame && 'animate-spin')} />
+                  <span>{capturingFrame ? 'Capturing...' : 'Capture Frame'}</span>
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportForensicDossier}
+                  disabled={exportingPackage}
+                  className="gap-1.5 text-xs"
+                >
+                  <FileArchive className={cn('size-3.5', exportingPackage && 'animate-spin')} />
+                  <span>{exportingPackage ? 'Exporting...' : 'Export Package (.ZIP)'}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* 5.B SURVEILLANCE EVENTS & 20s RING BUFFER EVIDENCE RIBBON */}
+          <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="size-4 text-emerald-500" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Detected Surveillance Events ({filteredSurveillanceEvents.length})
+                </h4>
+                <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-[10px] text-emerald-500">
+                  20s Ring Buffers Active
+                </Badge>
+              </div>
+
+              {/* Filter Pills */}
+              <div className="flex items-center gap-1">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: 'person_entry', label: 'Entry' },
+                  { id: 'person_exit', label: 'Exit' },
+                  { id: 'transaction_start', label: 'Tx Start' }
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setEventFilter(f.id)}
+                    className={cn(
+                      'rounded px-2 py-0.5 text-[11px] font-medium transition-colors',
+                      eventFilter === f.id
+                        ? 'bg-foreground text-background font-semibold'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Event Cards Scroll Ribbon */}
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {filteredSurveillanceEvents.map((ev) => {
+                const isSelected = ev.event_id === selectedEventId
+                const clipDur = ev.clip
+                  ? (ev.clip.pre_event_duration + ev.clip.post_event_duration).toFixed(1)
+                  : null
+
+                let badgeColor = 'bg-emerald-500/15 text-emerald-500 border-emerald-500/30'
+                let Icon = LogIn
+                if (ev.event_type === 'person_exit') {
+                  badgeColor = 'bg-rose-500/15 text-rose-500 border-rose-500/30'
+                  Icon = LogOut
+                } else if (ev.event_type === 'transaction_start') {
+                  badgeColor = 'bg-amber-500/15 text-amber-500 border-amber-500/30'
+                  Icon = CreditCard
+                }
+
+                return (
+                  <div
+                    key={ev.event_id}
+                    className={cn(
+                      'flex flex-col gap-2 rounded-xl border p-3 transition-all',
+                      isSelected
+                        ? 'border-cyan-500 bg-cyan-500/5 ring-1 ring-cyan-500/30'
+                        : 'border-border bg-card hover:border-border/80'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <Badge variant="outline" className={cn('gap-1 text-[11px] font-semibold py-0.5', badgeColor)}>
+                        <Icon className="size-3" />
+                        {ev.event_type.replace('_', ' ').toUpperCase()}
+                      </Badge>
+                      <span className="font-mono text-xs font-semibold text-foreground">
+                        {ev.video_timestamp_sec.toFixed(1)}s
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-medium text-foreground">
+                        Subject #{ev.person_number || '?'}
+                      </span>
+                      <span className="text-muted-foreground text-[11px]">
+                        {(ev.confidence * 100).toFixed(0)}% conf
+                      </span>
+                    </div>
+
+                    {ev.clip && (
+                      <div className="flex items-center justify-between border-t pt-1.5 text-[10px] text-muted-foreground">
+                        <span className="font-mono">{clipDur}s Context Clip</span>
+                        <button
+                          type="button"
+                          onClick={() => copyHashToClipboard(ev.clip!.sha256)}
+                          className="flex items-center gap-1 font-mono text-[9px] hover:text-foreground"
+                          title="Click to copy SHA-256"
+                        >
+                          {copiedHash === ev.clip.sha256 ? (
+                            <Check className="size-2.5 text-emerald-500" />
+                          ) : (
+                            <Copy className="size-2.5" />
+                          )}
+                          <span>{ev.clip.sha256.substring(0, 8)}...</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <Button
+                        variant={isSelected && playerMode === 'stream' ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => {
+                          setPlayerMode('stream')
+                          handleJumpToEvent(ev)
+                        }}
+                        className="h-7 flex-1 text-[11px]"
+                      >
+                        Jump Moment
+                      </Button>
+
+                      {ev.clip && (
+                        <Button
+                          variant={isSelected && playerMode === 'clip' ? 'default' : 'secondary'}
+                          size="sm"
+                          onClick={() => {
+                            setSelectedEventId(ev.event_id)
+                            setPlayerMode('clip')
+                            if (videoRef.current && ev.clip?.pre_event_duration) {
+                              videoRef.current.currentTime = ev.clip.pre_event_duration
+                            }
+                          }}
+                          className="h-7 flex-1 text-[11px]"
+                        >
+                          Play 20s Clip
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

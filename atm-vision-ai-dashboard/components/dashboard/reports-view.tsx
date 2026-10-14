@@ -33,12 +33,12 @@ export function ReportsView({
   stats?: BackendStats
 }) {
   const cases = useMemo(() => {
-    return investigations && investigations.length > 0 ? investigations : RECENT_INVESTIGATIONS
+    return investigations || []
   }, [investigations])
 
   const totalVideos = stats?.total_videos_analyzed || cases.length
   const totalPersons = stats?.total_persons_tracked || cases.reduce((acc, c) => acc + (c.faces || 0), 0)
-  const avgQuality = stats?.system_average_fidelity || 86.4
+  const avgQuality = stats?.system_average_fidelity || 0.0
   const currentDate = new Date().toLocaleDateString('en-US', {
     month: 'long',
     day: 'numeric',

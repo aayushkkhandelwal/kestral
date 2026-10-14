@@ -39,10 +39,10 @@ export function InvestigationsView({
 }) {
   const [filter, setFilter] = useState<string>('All')
   const [search, setSearch] = useState('')
-  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set(['INV-2045']))
+  const [flaggedIds, setFlaggedIds] = useState<Set<string>>(new Set())
 
   const allList = useMemo(() => {
-    return investigations && investigations.length > 0 ? investigations : RECENT_INVESTIGATIONS
+    return investigations || []
   }, [investigations])
 
   const filtered = useMemo(() => {

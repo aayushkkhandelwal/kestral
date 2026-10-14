@@ -75,76 +75,6 @@ export function EvidenceLibraryView({
       }
     })
 
-    // If still empty (first run before videos uploaded), provide clean default demonstration cards
-    if (items.length === 0) {
-      return [
-        {
-          track_id: 1,
-          best_frame_idx: 142,
-          best_timestamp: 5.68,
-          quality_score: 0.94,
-          sharpness_score: 0.92,
-          exposure_score: 0.88,
-          resolution_score: 0.95,
-          symmetry_score: 0.91,
-          crop_url: '/images/best-face.png',
-          full_frame_url: '/images/atm-cctv.png',
-          has_confirmed_face: true,
-          caseId: 'INV-2048',
-          atmName: 'ATM-114 · Downtown Branch',
-          caseDate: 'Oct 14, 2026',
-        },
-        {
-          track_id: 2,
-          best_frame_idx: 89,
-          best_timestamp: 3.56,
-          quality_score: 0.87,
-          sharpness_score: 0.85,
-          exposure_score: 0.82,
-          resolution_score: 0.89,
-          symmetry_score: 0.84,
-          crop_url: '/images/best-face.png',
-          full_frame_url: '/images/atm-cctv.png',
-          has_confirmed_face: true,
-          caseId: 'INV-2047',
-          atmName: 'ATM-087 · Riverside Mall',
-          caseDate: 'Oct 13, 2026',
-        },
-        {
-          track_id: 3,
-          best_frame_idx: 215,
-          best_timestamp: 8.6,
-          quality_score: 0.76,
-          sharpness_score: 0.74,
-          exposure_score: 0.79,
-          resolution_score: 0.75,
-          symmetry_score: 0.73,
-          crop_url: '/images/best-face.png',
-          full_frame_url: '/images/atm-cctv.png',
-          has_confirmed_face: false,
-          caseId: 'INV-2046',
-          atmName: 'ATM-203 · Central Station',
-          caseDate: 'Oct 12, 2026',
-        },
-        {
-          track_id: 4,
-          best_frame_idx: 320,
-          best_timestamp: 12.8,
-          quality_score: 0.89,
-          sharpness_score: 0.91,
-          exposure_score: 0.86,
-          resolution_score: 0.9,
-          symmetry_score: 0.88,
-          crop_url: '/images/best-face.png',
-          full_frame_url: '/images/atm-cctv.png',
-          has_confirmed_face: true,
-          caseId: 'INV-2044',
-          atmName: 'ATM-131 · West End Plaza',
-          caseDate: 'Oct 10, 2026',
-        },
-      ]
-    }
-
     return items
   }, [investigations, activeTracks])
 
@@ -251,7 +181,16 @@ export function EvidenceLibraryView({
       </div>
 
       {/* Gallery Grid */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed bg-card/50 p-12 text-center">
+          <Archive className="size-12 text-muted-foreground/40 mb-3" />
+          <h3 className="text-base font-semibold text-foreground">No Evidence Captured Yet</h3>
+          <p className="mt-1 text-xs text-muted-foreground max-w-sm">
+            Upload and process surveillance footage to extract and isolate optimal biometric evidence frames.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {filtered.map((item, idx) => {
           const imgSrc = item.crop_url.startsWith('http') || item.crop_url.startsWith('/images')
             ? item.crop_url
@@ -363,6 +302,7 @@ export function EvidenceLibraryView({
           )
         })}
       </div>
+      )}
 
       {/* Full Resolution Comparison Modal */}
       {selectedInspect && (
