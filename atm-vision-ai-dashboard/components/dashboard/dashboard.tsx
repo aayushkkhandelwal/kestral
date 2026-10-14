@@ -86,22 +86,90 @@ export function Dashboard({ className }: { className?: string } = {}) {
       }
 
       if (histRes.status === 'fulfilled' && Array.isArray(histRes.value.data)) {
-        const mapped: Investigation[] = histRes.value.data.map((h: any) => ({
-          id: `INV-${(h.task_id || '').toUpperCase()}`,
-          atm: h.filename ? `ATM-CCTV · ${h.filename}` : `Stream ${h.task_id}`,
-          status: 'Completed',
-          date: h.timestamp
-            ? new Date(h.timestamp * 1000).toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric',
-              })
-            : 'Recent',
-          faces: h.summary?.unique_persons_tracked || h.evidence_tracks?.length || 0,
-          result: h,
-        }))
+        const mapped: Investigation[] = histRes.value.data.map((h: any) => {
+          const rawTracks = h.evidence_tracks || h.tracks || []
+          const normalizedTracks: EvidenceTrack[] = rawTracks.map((t: any) => ({
+            track_id: t.track_id,
+            best_frame_idx: t.best_frame_idx || 0,
+            best_timestamp: t.best_timestamp || 0,
+            quality_score: t.best_score ? t.best_score / 100 : t.quality_score || 0.8,
+            sharpness_score: t.quality?.sharpness || t.sharpness_score || 0,
+            exposure_score: t.quality?.exposure || t.exposure_score || 0,
+            resolution_score: 0.85,
+            symmetry_score: 0.8,
+            crop_url: t.face_image_url || t.crop_url || '',
+            full_frame_url: t.full_frame_url || '',
+            face_image_url: t.face_image_url,
+            best_score: t.best_score ?? (t.quality_score ? Math.round(t.quality_score * 100) : 80),
+            has_confirmed_face: t.has_real_face ?? t.has_confirmed_face ?? true,
+            has_real_face: t.has_real_face ?? t.has_confirmed_face ?? true,
+            duration_seconds: t.duration_seconds,
+            first_seen_time: t.first_seen_time,
+            last_seen_time: t.last_seen_time,
+            total_detections: t.total_detections,
+            person_bbox: t.person_bbox,
+            face_bbox: t.face_bbox,
+            quality: t.quality,
+          }))
+
+          const normalizedResult: VideoAnalysisResult = {
+            task_id: h.task_id,
+            filename: h.filename || h.metadata?.filename || `ATM-${h.task_id}`,
+            video_url: h.video_url,
+            evidence_tracks: normalizedTracks,
+            summary: {
+              total_frames: h.metadata?.total_frames || h.summary?.total_frames || 0,
+              processed_frames: h.metadata?.frames_processed || h.summary?.processed_frames || 0,
+              duration_seconds: h.metadata?.duration_seconds || h.summary?.duration_seconds || 0,
+              unique_persons_tracked: h.summary?.unique_persons_tracked || normalizedTracks.length,
+              high_quality_evidence_count: h.summary?.high_quality_evidence_count || 0,
+              average_best_quality: h.summary?.average_best_quality || 0,
+            },
+          }
+
+          return {
+            id: `INV-${(h.task_id || '').toUpperCase()}`,
+            atm: h.filename ? `ATM-CCTV · ${h.filename}` : `Stream ${h.task_id}`,
+            status: 'Completed',
+            date: h.timestamp
+              ? new Date(h.timestamp * 1000).toLocaleDateString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                })
+              : 'Recent',
+            faces: normalizedTracks.length || h.summary?.unique_persons_tracked || 0,
+            result: normalizedResult,
+          }
+        })
+
         if (mapped.length > 0) {
           setInvestigations(mapped)
+
+          // On refresh or initial load, auto-restore active evidence so user never loses their session
+          setActiveResult((current) => {
+            if (current || activeTaskIdRef.current) return current
+            const savedTaskId = typeof window !== 'undefined' ? localStorage.getItem('kestral_active_task_id') : null
+            const chosen = (savedTaskId ? mapped.find((m) => m.result?.task_id === savedTaskId) : null) || mapped[0]
+            if (chosen && chosen.result) {
+              if (chosen.result.evidence_tracks?.length > 0) {
+                const best = [...chosen.result.evidence_tracks].sort(
+                  (a, b) => (b.quality_score || 0) - (a.quality_score || 0)
+                )[0]
+                setSelectedTrack(best)
+              }
+              if (chosen.result.video_url) {
+                setVideo({
+                  name: chosen.result.filename || chosen.atm,
+                  url: chosen.result.video_url,
+                  uploadedAt: new Date(),
+                })
+              }
+              setActiveStep(PIPELINE_STEPS.length - 1)
+              return chosen.result
+            }
+            return null
+          })
         }
       }
     } catch {
@@ -239,6 +307,9 @@ export function Dashboard({ className }: { className?: string } = {}) {
               }
 
               setActiveResult(normalizedResult)
+              if (typeof window !== 'undefined' && finalResult?.task_id) {
+                localStorage.setItem('kestral_active_task_id', finalResult.task_id)
+              }
               if (normalizedTracks.length > 0) {
                 const best = [...normalizedTracks].sort(
                   (a, b) => (b.quality_score || 0) - (a.quality_score || 0)
@@ -299,6 +370,9 @@ export function Dashboard({ className }: { className?: string } = {}) {
     }
 
     setActiveResult(normalizedResult)
+    if (typeof window !== 'undefined' && res?.task_id) {
+      localStorage.setItem('kestral_active_task_id', res.task_id)
+    }
     setProcessing(false)
     setActiveStep(PIPELINE_STEPS.length - 1)
     setTaskTelemetry(null)

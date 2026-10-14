@@ -14,15 +14,15 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from services.video_processor import VideoProcessor
-from services.person_detector import PersonDetector
-from services.face_detector import FaceDetector
-
 # Paths setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 import sys
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
+
+from services.video_processor import VideoProcessor
+from services.person_detector import PersonDetector
+from services.face_detector import FaceDetector
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
 # Storage folders
@@ -507,17 +507,40 @@ def get_analysis_history():
             json_file = os.path.join(task_dir, "results.json")
             if os.path.exists(json_file):
                 try:
-                    with open(json_file, "r") as f:
+                    with open(json_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
+
+                        # Match video file in uploads
+                        video_filename = None
+                        video_url = None
+                        if os.path.exists(UPLOADS_DIR):
+                            for u_file in os.listdir(UPLOADS_DIR):
+                                if u_file.startswith(folder_name):
+                                    video_filename = u_file[len(folder_name) + 1:]
+                                    video_url = f"/uploads/{u_file}"
+                                    break
+
+                        file_mtime = os.path.getmtime(json_file)
+                        tracks = data.get("tracks", [])
+
                         history.append({
                             "task_id": data.get("task_id", folder_name),
+                            "filename": video_filename or data.get("filename") or data.get("metadata", {}).get("filename") or f"cctv_{folder_name}.mp4",
+                            "video_url": video_url or data.get("video_url"),
+                            "timestamp": file_mtime,
                             "metadata": data.get("metadata", {}),
                             "summary": data.get("summary", {}),
-                            "top_evidence_count": len(data.get("tracks", []))
+                            "top_evidence_count": len(tracks),
+                            "tracks": tracks,
+                            "evidence_tracks": tracks,
+                            "status": data.get("status", "completed"),
+                            "progress": data.get("progress", 100.0)
                         })
                 except Exception:
                     pass
 
+    # Sort descending by modification time (most recent first)
+    history.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
     return history
 
 @app.get("/api/stats")
