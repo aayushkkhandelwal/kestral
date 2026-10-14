@@ -98,4 +98,27 @@
 - Pushed:
   - Branch: `feat/anshika/core-evidence-pipeline`
 
+---
+
+### 2026-10-15 03:30 IST — Anshika (Quality / Eval / Integrator)
+- Task: T7.1, T7.2 — End-to-End Demo Walkthrough, Asset Recording & Pitch Preparation
+- Done:
+  - Restarted backend and frontend servers cleanly on ports 8000 and 5173.
+  - Processed `f77b1b43_atm_video.mp4` via `/api/upload-and-process` using Targeted Windowing (task `d6045d17`, 10.0s +/- 10.0s window), verifying 150 frames processed in 8.46s (out of 7,433 total frames) with deblurred crop and composite plate generated.
+  - Created and verified transaction `TXN-DEMO-01` linked with 100% confidence to Track #1.
+  - Verified Face Search against indexed SQLite evidence database with sub-second response.
+  - Recorded a full 4.8MB WebP browser walkthrough video capturing Dashboard, Analysis, Evidence Dossier (with Quality v2, AI Deblur side-by-side, composite plate, and runner-ups), Transactions ROI canvas, Face Search, and Audit Trail.
+  - Generated comprehensive Hackathon Presentation Slide Deck guide and step-by-step Demo Script.
+- Files touched:
+  - `docs/CONTEXT_LOG.md`
+- Verified by running:
+  - `backend/.venv/bin/pytest backend/tests/ backend/test_camera.py` -> 20 passed (100% pass)
+  - `curl http://127.0.0.1:8000/api/health` -> 200 OK (YuNet + SFace loaded)
+  - Browser subagent demo recording -> `e2e_demo_walkthrough_1792011167255.webp` captured successfully
+- Not verified:
+  - Physical ATM hardware integration (tested with synthetic ATM CCTV sequences).
+- Next:
+  - Rehearse pitch with team and open/merge PR to `main`.
+
+
 
