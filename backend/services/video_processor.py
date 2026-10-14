@@ -59,12 +59,17 @@ class VideoProcessor:
 
         duration = round(total_frames / fps, 2) if fps > 0 else 0.0
 
-        # Dynamic stride for fast processing:
-        # 1-10s video: stride 3 | 10-30s video: stride 4 | 30s+ video: stride 5
-        if total_frames > 1200:
-            frame_stride = 5
+        # Dynamic stride for fast, responsive forensic processing:
+        # short clips (<400 frames, ~15s): stride 3 (~8-10 fps analysis)
+        # medium clips (400-1500 frames, ~15-50s): stride 5 (~5-6 fps analysis)
+        # long surveillance videos (1500-3500 frames, ~1-2 min): stride 8 (~3.5 fps analysis)
+        # very long surveillance videos (>3500 frames, 2+ min): stride 10 (~3 fps analysis)
+        if total_frames > 3500:
+            frame_stride = 10
+        elif total_frames > 1500:
+            frame_stride = 8
         elif total_frames > 400:
-            frame_stride = 4
+            frame_stride = 5
         else:
             frame_stride = 3
 
@@ -89,62 +94,69 @@ class VideoProcessor:
 
         try:
             while True:
+                # Fast frame grabbing: skip expensive full decoding of intermediate frames
+                if frame_idx % frame_stride != 0:
+                    ret = cap.grab()
+                    if not ret:
+                        break
+                    frame_idx += 1
+                    continue
+
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                if frame_idx % frame_stride == 0:
-                    timestamp_sec = round(frame_idx / fps, 2)
+                timestamp_sec = round(frame_idx / fps, 2)
 
-                    # 1. Detect and track persons
-                    detections = self.person_detector.track(frame, persist=True)
-                    total_detections_count += len(detections)
+                # 1. Detect and track persons
+                detections = self.person_detector.track(frame, persist=True)
+                total_detections_count += len(detections)
 
-                    # 2. Extract biometric evidence for each track
-                    for det in detections:
-                        track_id = det["track_id"]
-                        person_bbox = det["bbox"]
+                # 2. Extract biometric evidence for each track
+                for det in detections:
+                    track_id = det["track_id"]
+                    person_bbox = det["bbox"]
 
-                        face_info = self.face_detector.detect_face_in_person(frame, person_bbox)
-                        has_real_face = bool(face_info.get("has_real_face", False)) if face_info else False
+                    face_info = self.face_detector.detect_face_in_person(frame, person_bbox)
+                    has_real_face = bool(face_info.get("has_real_face", False)) if face_info else False
 
-                        if face_info and face_info.get("face_crop") is not None:
-                            quality = self.quality_assessor.assess_crop(
-                                face_info["face_crop"],
-                                has_real_face=has_real_face
-                            )
-                        else:
-                            px1, py1, px2, py2 = person_bbox
-                            fallback_crop = frame[py1:py2, px1:px2]
-                            quality = self.quality_assessor.assess_crop(fallback_crop, has_real_face=False)
-
-                        # 3. Update best candidate
-                        selector.update_track(
-                            track_id=track_id,
-                            frame_idx=frame_idx,
-                            timestamp_sec=timestamp_sec,
-                            full_frame=frame,
-                            person_bbox=person_bbox,
-                            face_info=face_info,
-                            quality_metrics=quality
+                    if face_info and face_info.get("face_crop") is not None:
+                        quality = self.quality_assessor.assess_crop(
+                            face_info["face_crop"],
+                            has_real_face=has_real_face
                         )
+                    else:
+                        px1, py1, px2, py2 = person_bbox
+                        fallback_crop = frame[py1:py2, px1:px2]
+                        quality = self.quality_assessor.assess_crop(fallback_crop, has_real_face=False)
 
-                    processed_frames_count += 1
+                    # 3. Update best candidate
+                    selector.update_track(
+                        track_id=track_id,
+                        frame_idx=frame_idx,
+                        timestamp_sec=timestamp_sec,
+                        full_frame=frame,
+                        person_bbox=person_bbox,
+                        face_info=face_info,
+                        quality_metrics=quality
+                    )
 
-                    # Send smooth real-time progress updates every 2 sampled frames
-                    if progress_callback and (processed_frames_count % 2 == 0 or frame_idx >= total_frames - frame_stride):
-                        pct = min(99.0, max(2.0, round((frame_idx / max(1, total_frames)) * 100, 1)))
-                        elapsed = time.time() - start_time
-                        curr_fps = round(processed_frames_count / max(0.001, elapsed), 1)
-                        progress_callback({
-                            "task_id": task_id,
-                            "status": "processing",
-                            "progress": pct,
-                            "current_frame": frame_idx,
-                            "total_frames": total_frames,
-                            "processing_fps": curr_fps,
-                            "tracks_count": len(selector.tracks)
-                        })
+                processed_frames_count += 1
+
+                # Send smooth real-time progress updates every 2 sampled frames
+                if progress_callback and (processed_frames_count % 2 == 0 or frame_idx >= total_frames - frame_stride):
+                    pct = min(99.0, max(2.0, round((frame_idx / max(1, total_frames)) * 100, 1)))
+                    elapsed = time.time() - start_time
+                    curr_fps = round(frame_idx / max(0.001, elapsed), 1)
+                    progress_callback({
+                        "task_id": task_id,
+                        "status": "processing",
+                        "progress": pct,
+                        "current_frame": frame_idx,
+                        "total_frames": total_frames,
+                        "processing_fps": curr_fps,
+                        "tracks_count": len(selector.tracks)
+                    })
 
                 frame_idx += 1
 
