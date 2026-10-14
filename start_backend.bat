@@ -1,7 +1,7 @@
 @echo off
-echo ==========================================
+echo
 echo Starting Kestral Vision Intelligence Backend
-echo ==========================================
+echo 
 cd /d "%~dp0backend"
 if exist ".venv\Scripts\python.exe" (
     echo Using backend virtual environment...
