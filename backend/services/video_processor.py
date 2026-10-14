@@ -1,6 +1,7 @@
 import os
 import time
 import json
+from datetime import datetime
 import cv2
 from typing import Dict, Any, Callable, Optional
 from services.person_detector import PersonDetector
@@ -51,6 +52,11 @@ class VideoProcessor:
         fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        if total_frames <= 0 or width <= 0 or height <= 0:
+            cap.release()
+            raise ValueError(f"Video file contains no valid decodable frames (frames={total_frames}, dimensions={width}x{height})")
+
         duration = round(total_frames / fps, 2) if fps > 0 else 0.0
 
         # Dynamic stride for fast processing:
@@ -156,6 +162,41 @@ class VideoProcessor:
         )
         high_quality_count = sum(1 for t in tracks_summary if t["best_score"] >= 65.0)
 
+        # Compute input video hash and build evidence manifest
+        video_hash = selector._compute_sha256(video_path)
+        video_size = os.path.getsize(video_path) if os.path.exists(video_path) else 0
+
+        evidence_files_list = []
+        for t in tracks_summary:
+            if t.get("face_sha256"):
+                evidence_files_list.append({
+                    "filename": f"track_{t['track_id']}_face.jpg",
+                    "url": t.get("face_image_url"),
+                    "sha256": t.get("face_sha256")
+                })
+            if t.get("full_frame_sha256"):
+                evidence_files_list.append({
+                    "filename": f"track_{t['track_id']}_full.jpg",
+                    "url": t.get("full_frame_url"),
+                    "sha256": t.get("full_frame_sha256")
+                })
+
+        integrity_manifest = {
+            "original_video": {
+                "file_path": video_path,
+                "size_bytes": video_size,
+                "sha256": video_hash
+            },
+            "evidence_files": evidence_files_list,
+            "processed_timestamp": datetime.utcnow().isoformat() + "Z",
+            "models_used": {
+                "person_detector": "YOLOv8n (Ultralytics)",
+                "face_detector": "OpenCV YuNet ONNX (5 landmarks)",
+                "quality_assessor": "Laplacian-40/Res-30/Lum-15/Contrast-15"
+            },
+            "disclaimer": "SHA-256 cryptographic hashes detect subsequent modification or corruption but do not independently establish source authenticity or chain-of-custody."
+        }
+
         result_payload = {
             "task_id": task_id,
             "status": "completed",
@@ -174,12 +215,13 @@ class VideoProcessor:
                 "average_best_quality": avg_quality,
                 "high_quality_evidence_count": high_quality_count
             },
-            "tracks": tracks_summary
+            "tracks": tracks_summary,
+            "integrity": integrity_manifest
         }
 
         # Save results JSON
         results_json_path = os.path.join(output_dir, "results.json")
-        with open(results_json_path, "w") as f:
+        with open(results_json_path, "w", encoding="utf-8") as f:
             json.dump(result_payload, f, indent=2)
 
         if progress_callback:

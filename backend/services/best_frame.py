@@ -116,6 +116,10 @@ class BestFrameSelector:
                 person_crop = data["best_full_frame"][py1:py2, px1:px2]
                 cv2.imwrite(face_crop_path, person_crop)
 
+            # Compute cryptographic hashes for forensic integrity
+            face_sha256 = self._compute_sha256(face_crop_path)
+            full_frame_sha256 = self._compute_sha256(full_frame_path)
+
             duration = round(data["last_seen_time"] - data["first_seen_time"], 2)
             avg_score = round(float(np.mean(data["all_scores"])), 1) if data["all_scores"] else 0.0
 
@@ -134,10 +138,24 @@ class BestFrameSelector:
                 "person_bbox": data["best_person_bbox"],
                 "face_bbox": data["best_face_bbox"],
                 "face_image_url": f"{relative_url_prefix}/{face_crop_filename}".replace("//", "/"),
-                "full_frame_url": f"{relative_url_prefix}/{full_frame_filename}".replace("//", "/")
+                "crop_url": f"{relative_url_prefix}/{face_crop_filename}".replace("//", "/"),
+                "full_frame_url": f"{relative_url_prefix}/{full_frame_filename}".replace("//", "/"),
+                "face_sha256": face_sha256,
+                "full_frame_sha256": full_frame_sha256
             }
             finalized_tracks.append(clean_summary)
 
         # Sort: verified faces first, then by score
         finalized_tracks.sort(key=lambda x: (x["has_real_face"], x["best_score"]), reverse=True)
         return finalized_tracks
+
+    @staticmethod
+    def _compute_sha256(filepath: str) -> str:
+        import hashlib
+        if not os.path.exists(filepath):
+            return ""
+        h = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()

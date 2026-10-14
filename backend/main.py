@@ -4,6 +4,7 @@ import json
 import shutil
 import asyncio
 import time
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
@@ -87,6 +88,11 @@ async def health_check():
         "cuda_available": False
     }
 
+import re
+
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB limit
+
 @app.post("/api/upload-and-process")
 async def upload_and_process(
     background_tasks: BackgroundTasks,
@@ -94,23 +100,58 @@ async def upload_and_process(
 ):
     """
     Receives an uploaded video, initiates YOLO tracking & best-frame extraction in background.
+    Validates file extension, size limit, and prevents directory traversal.
     """
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Empty filename")
+    if not file.filename or not file.filename.strip():
+        raise HTTPException(status_code=400, detail="Empty filename provided.")
+
+    clean_filename = os.path.basename(file.filename.strip())
+    ext = os.path.splitext(clean_filename)[1].lower()
+
+    if ext not in ALLOWED_VIDEO_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported video format '{ext}'. Allowed extensions: {', '.join(sorted(ALLOWED_VIDEO_EXTENSIONS))}"
+        )
 
     task_id = str(uuid.uuid4())[:8]
-    ext = os.path.splitext(file.filename)[1] or ".mp4"
-    saved_filename = f"{task_id}_{file.filename}"
+    safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", clean_filename)
+    saved_filename = f"{task_id}_{safe_name}"
     video_path = os.path.join(UPLOADS_DIR, saved_filename)
     output_dir = os.path.join(RESULTS_DIR, task_id)
 
-    # Save uploaded file chunk by chunk
-    with open(video_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    # Read and stream chunk-by-chunk while enforcing MAX_UPLOAD_SIZE
+    total_bytes = 0
+    try:
+        with open(video_path, "wb") as buffer:
+            while True:
+                chunk = await file.read(1024 * 1024) # 1MB chunks
+                if not chunk:
+                    break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="Video file exceeds maximum allowed size of 500MB."
+                    )
+                buffer.write(chunk)
+    except HTTPException:
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        raise
+    except Exception as e:
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        raise HTTPException(status_code=500, detail=f"Failed to save upload: {str(e)}")
+
+    if total_bytes == 0:
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        raise HTTPException(status_code=400, detail="Uploaded file is empty (0 bytes).")
 
     TASKS[task_id] = {
         "task_id": task_id,
-        "filename": file.filename,
+        "filename": clean_filename,
         "video_url": f"/uploads/{saved_filename}",
         "status": "queued",
         "progress": 0.0,
@@ -130,37 +171,49 @@ async def upload_and_process(
 
     return {
         "task_id": task_id,
-        "filename": file.filename,
+        "filename": clean_filename,
         "status": "processing",
         "message": "Video queued for analysis"
     }
 
 @app.get("/api/tasks/{task_id}/status")
 def get_task_status(task_id: str):
-    """Returns real-time progress of a video analysis task."""
+    """Returns real-time progress of a video analysis task with path sanitization."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
     if task_id not in TASKS:
         # Check if saved on disk from previous session
         saved_json = os.path.join(RESULTS_DIR, task_id, "results.json")
         if os.path.exists(saved_json):
-            with open(saved_json, "r") as f:
-                data = json.load(f)
-            return {
-                "task_id": task_id,
-                "status": "completed",
-                "progress": 100.0,
-                "result": data
-            }
+            try:
+                with open(saved_json, "r") as f:
+                    data = json.load(f)
+                return {
+                    "task_id": task_id,
+                    "status": "completed",
+                    "progress": 100.0,
+                    "result": data
+                }
+            except Exception:
+                pass
         raise HTTPException(status_code=404, detail="Task not found")
 
     return TASKS[task_id]
 
 @app.get("/api/tasks/{task_id}/results")
 def get_task_results(task_id: str):
-    """Fetches detailed evidence tracks and metadata for a completed task."""
+    """Fetches detailed evidence tracks and metadata for a completed task with path sanitization."""
+    if not re.match(r"^[a-zA-Z0-9_-]+$", task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
     saved_json = os.path.join(RESULTS_DIR, task_id, "results.json")
     if os.path.exists(saved_json):
-        with open(saved_json, "r") as f:
-            return json.load(f)
+        try:
+            with open(saved_json, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read results file: {str(e)}")
 
     if task_id in TASKS and TASKS[task_id].get("status") == "completed":
         return TASKS[task_id].get("result")
@@ -169,6 +222,135 @@ def get_task_results(task_id: str):
         return {"status": TASKS[task_id]["status"], "progress": TASKS[task_id]["progress"]}
 
     raise HTTPException(status_code=404, detail="Task result not found")
+
+@app.get("/api/tasks/{task_id}/verify-integrity")
+def verify_task_integrity(task_id: str):
+    """
+    Cryptographically verifies the SHA-256 hashes of original uploaded video and
+    extracted evidence frames against the immutable manifest stored in results.json.
+    """
+    if not re.match(r"^[a-zA-Z0-9_-]+$", task_id):
+        raise HTTPException(status_code=400, detail="Invalid task ID format.")
+
+    saved_json = os.path.join(RESULTS_DIR, task_id, "results.json")
+    if not os.path.exists(saved_json):
+        raise HTTPException(status_code=404, detail="Task results not found.")
+
+    try:
+        with open(saved_json, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read results file: {str(e)}")
+
+    integrity = data.get("integrity")
+    if not integrity:
+        return {
+            "task_id": task_id,
+            "verified": False,
+            "status": "NO_INTEGRITY_DATA",
+            "message": "Task was processed prior to integrity ledger implementation.",
+            "summary": {
+                "total_files_checked": 0,
+                "matched": 0,
+                "modified": 0,
+                "missing": 0
+            },
+            "evidence_files": []
+        }
+
+    from evaluation.metrics import compute_sha256
+
+    results_check = []
+    total_checked = 0
+    matched_count = 0
+    modified_count = 0
+    missing_count = 0
+
+    # 1. Verify original video
+    orig_vid = integrity.get("original_video", {})
+    recorded_vid_path = orig_vid.get("file_path", "")
+    recorded_vid_hash = orig_vid.get("sha256", "")
+
+    vid_path_to_check = recorded_vid_path
+    if not os.path.exists(vid_path_to_check):
+        fallback_vid_path = os.path.join(UPLOADS_DIR, os.path.basename(recorded_vid_path))
+        if os.path.exists(fallback_vid_path):
+            vid_path_to_check = fallback_vid_path
+
+    vid_status = "MISSING"
+    actual_vid_hash = None
+    if os.path.exists(vid_path_to_check):
+        actual_vid_hash = compute_sha256(vid_path_to_check)
+        vid_status = "MATCH" if actual_vid_hash.lower() == recorded_vid_hash.lower() else "MODIFIED"
+
+    total_checked += 1
+    if vid_status == "MATCH":
+        matched_count += 1
+    elif vid_status == "MODIFIED":
+        modified_count += 1
+    else:
+        missing_count += 1
+
+    orig_vid_result = {
+        "item_type": "original_video",
+        "file_name": os.path.basename(recorded_vid_path),
+        "recorded_hash": recorded_vid_hash,
+        "calculated_hash": actual_vid_hash,
+        "status": vid_status,
+        "is_valid": (vid_status == "MATCH")
+    }
+
+    # 2. Verify evidence frames
+    task_results_dir = os.path.join(RESULTS_DIR, task_id)
+    evidence_items = integrity.get("evidence_files", [])
+    for ev in evidence_items:
+        filename = ev.get("filename")
+        expected_hash = ev.get("sha256", "")
+        filepath = os.path.join(task_results_dir, filename)
+
+        item_status = "MISSING"
+        actual_hash = None
+        if os.path.exists(filepath):
+            actual_hash = compute_sha256(filepath)
+            item_status = "MATCH" if actual_hash.lower() == expected_hash.lower() else "MODIFIED"
+
+        total_checked += 1
+        if item_status == "MATCH":
+            matched_count += 1
+        elif item_status == "MODIFIED":
+            modified_count += 1
+        else:
+            missing_count += 1
+
+        results_check.append({
+            "item_type": "evidence_crop",
+            "file_name": filename,
+            "url": ev.get("url"),
+            "recorded_hash": expected_hash,
+            "calculated_hash": actual_hash,
+            "status": item_status,
+            "is_valid": (item_status == "MATCH")
+        })
+
+    is_all_valid = (modified_count == 0 and missing_count == 0 and matched_count > 0)
+    overall_status = "VERIFIED" if is_all_valid else ("MODIFIED" if modified_count > 0 else "EVIDENCE_MISSING")
+
+    return {
+        "task_id": task_id,
+        "verified": is_all_valid,
+        "status": overall_status,
+        "verified_at": datetime.utcnow().isoformat() + "Z",
+        "summary": {
+            "total_files_checked": total_checked,
+            "matched": matched_count,
+            "modified": modified_count,
+            "missing": missing_count
+        },
+        "original_video": orig_vid_result,
+        "evidence_files": results_check,
+        "models_used": integrity.get("models_used", {}),
+        "disclaimer": integrity.get("disclaimer", "Cryptographic hashes verify bitwise integrity and detect subsequent alteration. They do not independently verify legal chain of custody or capture origin.")
+    }
 
 @app.get("/api/history")
 def get_analysis_history():
@@ -214,6 +396,30 @@ def get_aggregate_stats():
         "system_average_fidelity": avg_quality,
         "active_models": ["YOLOv8-Tracking", "Cascade-Biometrics", "Laplacian-Fidelity-v2"]
     }
+
+@app.get("/api/evaluation/latest")
+def get_latest_evaluation():
+    """Returns the latest measured benchmark metrics and forensic model report."""
+    report_path = os.path.join(BASE_DIR, "evaluation", "latest_evaluation_report.json")
+    if not os.path.exists(report_path):
+        raise HTTPException(status_code=404, detail="No evaluation report has been generated yet.")
+    try:
+        with open(report_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read evaluation report: {str(e)}")
+
+@app.post("/api/evaluation/run")
+async def run_evaluation():
+    """Executes a full evaluation run across the dataset manifest and updates the latest report."""
+    from evaluation.generate_report import generate_full_evaluation_report
+    loop = asyncio.get_event_loop()
+    try:
+        report = await loop.run_in_executor(executor, generate_full_evaluation_report)
+        return report
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Evaluation run failed: {str(e)}")
+
 
 # ==========================================
 # Live Camera Vision Pipeline & Endpoints

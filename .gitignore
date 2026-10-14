@@ -43,6 +43,9 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/dist-ssr/
+atm-vision-ai-dashboard/node_modules/
+atm-vision-ai-dashboard/.next/
+*.tsbuildinfo
 *.local
 .env
 .env.*.local

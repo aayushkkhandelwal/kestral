@@ -69,14 +69,18 @@ python main.py
 ```
 Backend API will be running at `http://localhost:8000` (Swagger docs at `http://localhost:8000/docs`).
 
-### 2. Frontend Setup
+### 2. Frontend Setup (ATM Vision AI Dashboard)
 
 ```bash
-cd frontend
+cd atm-vision-ai-dashboard
 npm install
 npm run dev
 ```
-Frontend interface will be running at `http://localhost:5173`.
+Frontend interface will be running at `http://localhost:3000`.
+
+Alternatively, use the one-click launchers in the project root:
+- `start_backend.bat` - Starts the FastAPI vision backend on port 8000
+- `start_dashboard.bat` - Starts the Next.js ATM Vision AI Dashboard on port 3000
 
 ---
 

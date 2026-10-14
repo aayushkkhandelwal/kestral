@@ -1,0 +1,10 @@
+{
+  "video_id": "SYNTH_EMPTY_01",
+  "resolution": [320, 240],
+  "frames": [
+    { "frame_idx": 0, "timestamp_sec": 0.0, "ground_truths": [] },
+    { "frame_idx": 3, "timestamp_sec": 0.3, "ground_truths": [] },
+    { "frame_idx": 6, "timestamp_sec": 0.6, "ground_truths": [] },
+    { "frame_idx": 9, "timestamp_sec": 0.9, "ground_truths": [] }
+  ]
+}

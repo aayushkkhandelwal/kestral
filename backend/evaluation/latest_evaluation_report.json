@@ -1,0 +1,102 @@
+{
+  "report_id": "EVAL-1791987885",
+  "timestamp": "2026-10-14T14:24:45.877990Z",
+  "system_telemetry": {
+    "elapsed_seconds": 22.66,
+    "memory_usage_mb": 503.7,
+    "memory_growth_mb": 270.2,
+    "device": "CPU (OpenCV DNN + PyTorch TorchScript/ONNX)",
+    "yolo_model": "yolov8n.pt",
+    "face_model": "face_detection_yunet.onnx"
+  },
+  "person_detection": {
+    "true_positives": 8,
+    "false_positives": 0,
+    "false_negatives": 112,
+    "precision": 1.0,
+    "recall": 0.0667,
+    "f1": 0.125,
+    "mAP50": 0.0667
+  },
+  "person_detection_by_condition": {
+    "people_crossing_paths": {
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 60,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mAP50": 0.0
+    },
+    "temporary_disappearance": {
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 30,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "mAP50": 0.0
+    },
+    "low_light_and_motion_blur": {
+      "true_positives": 8,
+      "false_positives": 0,
+      "false_negatives": 22,
+      "precision": 1.0,
+      "recall": 0.2667,
+      "f1": 0.4211,
+      "mAP50": 0.2667
+    }
+  },
+  "tracking_stability": {
+    "total_gt_identities": 3,
+    "total_predicted_tracks": 0,
+    "total_id_switches": 0,
+    "total_fragmentations": 0,
+    "switch_rate_per_identity": 0.0,
+    "fragmentation_rate": 0.0
+  },
+  "tracking_sequences": [
+    {
+      "ground_truth_identities": 2,
+      "predicted_tracks": 0,
+      "id_switches": 0,
+      "track_fragmentations": 0,
+      "switch_rate_per_identity": 0.0,
+      "video_id": "BENCH_CROSSING_03",
+      "test_condition": "people_crossing_paths",
+      "frames_evaluated": 30
+    },
+    {
+      "ground_truth_identities": 1,
+      "predicted_tracks": 0,
+      "id_switches": 0,
+      "track_fragmentations": 0,
+      "switch_rate_per_identity": 0.0,
+      "video_id": "BENCH_DISAPPEAR_04",
+      "test_condition": "temporary_disappearance",
+      "frames_evaluated": 40
+    }
+  ],
+  "face_detection": {
+    "true_positives": 32,
+    "false_positives": 0,
+    "false_negatives": 88,
+    "precision": 1.0,
+    "recall": 0.2667,
+    "f1": 0.4211
+  },
+  "face_quality_checks": {
+    "zero_size_handled": true,
+    "black_frame_penalized": true,
+    "white_frame_penalized": true,
+    "sharp_contrast_rewarded": true,
+    "back_of_head_capped": true
+  },
+  "best_frame_selection": {
+    "tracks_evaluated": 1,
+    "optimal_frame_selected_count": 1,
+    "accuracy_percentage": 100.0,
+    "usable_evidence_fraction": "1/1"
+  },
+  "status": "PASS"
+}
