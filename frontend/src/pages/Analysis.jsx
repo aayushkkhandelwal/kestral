@@ -9,7 +9,11 @@ import {
   Film, 
   Users, 
   Sparkles,
-  BarChart3 
+  BarChart3,
+  MapPin,
+  Clock,
+  Layers,
+  ChevronRight
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
 import VideoUploader from '../components/VideoUploader';
@@ -17,47 +21,69 @@ import TrackResults from '../components/TrackResults';
 import EvidenceViewer from '../components/EvidenceViewer';
 
 export default function Analysis({ onRefreshStats }) {
+  // Map of taskId -> taskState
+  const [tasks, setTasks] = useState({});
   const [activeTaskId, setActiveTaskId] = useState(null);
-  const [taskStatus, setTaskStatus] = useState(null);
-  const [resultsData, setResultsData] = useState(null);
   const [selectedTrack, setSelectedTrack] = useState(null);
-  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Poll for status when activeTaskId is processing
+  // Poll for status of all active (running) tasks
   useEffect(() => {
-    let interval = null;
+    const runningTaskIds = Object.keys(tasks).filter(id => {
+      const s = tasks[id]?.status;
+      return s === 'queued' || s === 'processing';
+    });
 
-    if (activeTaskId && isProcessing) {
-      interval = setInterval(async () => {
+    if (runningTaskIds.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const tid of runningTaskIds) {
         try {
-          const res = await axios.get(`${API_BASE_URL}/api/tasks/${activeTaskId}/status`);
+          const res = await axios.get(`${API_BASE_URL}/api/tasks/${tid}/status`);
           const data = res.data;
-          setTaskStatus(data);
 
-          if (data.status === 'completed') {
-            setIsProcessing(false);
-            setResultsData(data.result);
-            if (onRefreshStats) onRefreshStats();
-          } else if (data.status === 'failed') {
-            setIsProcessing(false);
+          setTasks(prev => {
+            const current = prev[tid] || {};
+            const updated = {
+              ...current,
+              ...data,
+              // If finished, store the full result payload
+              result: data.status === 'completed' ? data.result : current.result
+            };
+            return { ...prev, [tid]: updated };
+          });
+
+          if (data.status === 'completed' && onRefreshStats) {
+            onRefreshStats();
           }
         } catch (err) {
-          console.error('Polling error:', err);
+          console.error(`Polling error for task ${tid}:`, err);
         }
-      }, 1000);
-    }
+      }
+    }, 1000);
 
-    return () => {
-      if (interval) clearInterval(interval);
+    return () => clearInterval(interval);
+  }, [tasks, onRefreshStats]);
+
+  const handleTaskCreated = (taskId, filename, metadata) => {
+    const newTask = {
+      task_id: taskId,
+      filename: filename || `Task-${taskId}`,
+      status: 'processing',
+      progress: 0,
+      current_frame: 0,
+      total_frames: 0,
+      tracks_count: 0,
+      metadata: metadata || {},
+      created_at: new Date().toLocaleTimeString()
     };
-  }, [activeTaskId, isProcessing, onRefreshStats]);
 
-  const handleTaskCreated = (taskId) => {
+    setTasks(prev => ({ ...prev, [taskId]: newTask }));
     setActiveTaskId(taskId);
-    setIsProcessing(true);
-    setResultsData(null);
-    setTaskStatus({ status: 'processing', progress: 0, current_frame: 0, total_frames: 0 });
   };
+
+  const activeTask = activeTaskId ? tasks[activeTaskId] : null;
+  const isAnyProcessing = Object.values(tasks).some(t => t.status === 'processing' || t.status === 'queued');
+  const taskList = Object.values(tasks);
 
   return (
     <div>
@@ -67,32 +93,100 @@ export default function Analysis({ onRefreshStats }) {
           Surveillance Stream Processing
         </h1>
         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-          Ingest raw footage, execute YOLO ByteTrack algorithms, and extract optimal facial fidelity frames
+          Ingest raw CCTV footage, process concurrent feeds with adaptive frame stride, and extract optimal facial fidelity evidence
         </p>
       </div>
 
       {/* Video Uploader */}
-      <VideoUploader onTaskCreated={handleTaskCreated} isProcessing={isProcessing} />
+      <VideoUploader onTaskCreated={handleTaskCreated} isProcessing={false} />
 
-      {/* Real-Time Processing Status Monitor */}
-      {isProcessing && taskStatus && (
-        <div className="glass-panel" style={{ padding: '24px', marginTop: '24px', border: '1px solid var(--border-glow)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+      {/* Concurrent Task Queue Bar */}
+      {taskList.length > 0 && (
+        <div style={{ marginTop: '24px', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Concurrent Analysis Feeds ({taskList.length})
+            </span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              Worker Pool: 3 Parallel Processors
+            </span>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+            {taskList.map(task => {
+              const isSelected = task.task_id === activeTaskId;
+              const isRunning = task.status === 'processing' || task.status === 'queued';
+              const isDone = task.status === 'completed';
+              const isFailed = task.status === 'failed';
+
+              return (
+                <button
+                  key={task.task_id}
+                  onClick={() => setActiveTaskId(task.task_id)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: isSelected ? '1px solid var(--accent-cyan)' : '1px solid var(--border-subtle)',
+                    backgroundColor: isSelected ? 'rgba(6, 182, 212, 0.12)' : 'var(--bg-input)',
+                    color: isSelected ? 'var(--accent-cyan)' : 'var(--text-primary)',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {isRunning && <Loader2 size={14} className="pulse-indicator" color="var(--accent-cyan)" />}
+                  {isDone && <CheckCircle2 size={14} color="var(--accent-emerald)" />}
+                  {isFailed && <AlertCircle size={14} color="#f43f5e" />}
+
+                  <span>{task.filename || task.task_id}</span>
+                  {isRunning && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--accent-cyan)' }}>
+                      {task.progress || 0}%
+                    </span>
+                  )}
+                  {isDone && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.7rem', color: 'var(--accent-emerald)' }}>
+                      {task.result?.tracks?.length ?? task.tracks_count ?? 0} tracks
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Real-Time Processing Status Monitor for Active Task */}
+      {activeTask && (activeTask.status === 'processing' || activeTask.status === 'queued') && (
+        <div className="glass-panel" style={{ padding: '24px', marginTop: '20px', border: '1px solid var(--border-glow)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Loader2 size={22} color="var(--accent-cyan)" className="pulse-indicator" />
               <div>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Processing Video Stream (Task #{activeTaskId})
+                  Processing Video Stream ({activeTask.filename} • #{activeTask.task_id})
                 </h3>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                  Extracting frames, evaluating Laplacian sharpness & tracking identity paths
+                  Extracting frames, evaluating Laplacian sharpness, deblurring & tracking biometric identity paths
                 </p>
               </div>
             </div>
 
-            <span className="badge badge-good">
-              {taskStatus.processing_fps || 24} FPS Active
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {activeTask.atm_id && (
+                <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                  {activeTask.atm_id}
+                </span>
+              )}
+              <span className="badge badge-good">
+                {activeTask.processing_fps || 24} FPS Active
+              </span>
+            </div>
           </div>
 
           {/* Progress Bar */}
@@ -104,7 +198,7 @@ export default function Analysis({ onRefreshStats }) {
             marginBottom: '14px'
           }}>
             <div style={{
-              width: `${taskStatus.progress || 0}%`,
+              width: `${activeTask.progress || 0}%`,
               height: '100%',
               background: 'linear-gradient(90deg, var(--accent-cyan), var(--accent-indigo))',
               transition: 'width 0.4s ease'
@@ -117,20 +211,22 @@ export default function Analysis({ onRefreshStats }) {
             justifyContent: 'space-between',
             fontSize: '0.78rem',
             fontFamily: 'var(--font-mono)',
-            color: 'var(--text-secondary)'
+            color: 'var(--text-secondary)',
+            flexWrap: 'wrap',
+            gap: '8px'
           }}>
-            <span>Progress: {taskStatus.progress || 0}%</span>
-            <span>Frame: {taskStatus.current_frame || 0} / {taskStatus.total_frames || '...'}</span>
-            <span>Persons Discovered: {taskStatus.tracks_count || 0}</span>
+            <span>Progress: {activeTask.progress || 0}%</span>
+            <span>Frame: {activeTask.current_frame || 0} / {activeTask.total_frames || '...'}</span>
+            <span>Persons Discovered: {activeTask.tracks_count || 0}</span>
           </div>
         </div>
       )}
 
       {/* Failed Task Error Banner */}
-      {taskStatus?.status === 'failed' && (
+      {activeTask?.status === 'failed' && (
         <div className="glass-panel" style={{
           padding: '20px 24px',
-          marginTop: '24px',
+          marginTop: '20px',
           border: '1px solid rgba(244, 63, 94, 0.4)',
           backgroundColor: 'rgba(244, 63, 94, 0.08)',
           display: 'flex',
@@ -140,16 +236,20 @@ export default function Analysis({ onRefreshStats }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <AlertCircle size={24} color="#f43f5e" />
             <div>
-              <h4 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 700 }}>Processing Error</h4>
+              <h4 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 700 }}>Processing Error ({activeTask.filename})</h4>
               <p style={{ color: '#fb7185', fontSize: '0.825rem' }}>
-                {taskStatus.error || 'Video could not be processed. Please try again with another video sequence.'}
+                {activeTask.error || 'Video could not be processed. Please try again with another video sequence.'}
               </p>
             </div>
           </div>
           <button
             onClick={() => {
+              setTasks(prev => {
+                const copy = { ...prev };
+                delete copy[activeTaskId];
+                return copy;
+              });
               setActiveTaskId(null);
-              setTaskStatus(null);
             }}
             className="btn btn-secondary"
             style={{ fontSize: '0.8rem', padding: '8px 16px' }}
@@ -160,33 +260,45 @@ export default function Analysis({ onRefreshStats }) {
       )}
 
       {/* Completed Results Summary Banner */}
-      {resultsData && (
+      {activeTask?.status === 'completed' && activeTask.result && (
         <div className="glass-panel" style={{
           padding: '24px',
-          marginTop: '24px',
+          marginTop: '20px',
           marginBottom: '28px',
           border: '1px solid rgba(16, 185, 129, 0.35)',
           background: 'linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-card) 100%)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <CheckCircle2 size={24} color="var(--accent-emerald)" />
               <div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Analysis Successfully Completed
-                </h3>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Processed {resultsData.metadata?.frames_processed} frames in {resultsData.metadata?.elapsed_time_sec}s
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Analysis Completed: {activeTask.filename}
+                  </h3>
+                  {activeTask.result?.metadata?.atm_id && (
+                    <span className="badge badge-secondary" style={{ fontSize: '0.72rem' }}>
+                      📍 {activeTask.result.metadata.location_name || activeTask.result.metadata.atm_id}
+                    </span>
+                  )}
+                </div>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  Processed {activeTask.result.metadata?.frames_processed} frames in {activeTask.result.metadata?.elapsed_time_sec}s
+                  {activeTask.result.metadata?.window_applied && (
+                    <span style={{ color: 'var(--accent-cyan)', marginLeft: '6px' }}>
+                      (Targeted window: {activeTask.result.metadata.window_start_s}s - {activeTask.result.metadata.window_end_s}s)
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
               <span className="badge badge-excellent">
-                {resultsData.summary?.unique_persons_tracked} Persons Tracked
+                {activeTask.result.summary?.unique_persons_tracked} Persons Tracked
               </span>
               <span className="badge badge-good">
-                Avg Score: {resultsData.summary?.average_best_quality}%
+                Avg Score: {activeTask.result.summary?.average_best_quality}%
               </span>
             </div>
           </div>
@@ -194,9 +306,9 @@ export default function Analysis({ onRefreshStats }) {
       )}
 
       {/* Tracked Results Gallery */}
-      <div style={{ marginTop: '28px' }}>
+      <div style={{ marginTop: '24px' }}>
         <TrackResults
-          tracks={resultsData?.tracks || []}
+          tracks={activeTask?.result?.tracks || []}
           onSelectTrack={(track) => setSelectedTrack(track)}
         />
       </div>

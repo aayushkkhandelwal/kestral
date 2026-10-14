@@ -28,6 +28,10 @@ STRIDE_SHORT = 3    # < 400 frames
 STRIDE_MEDIUM = 4   # 400 - 1200 frames
 STRIDE_LONG = 5     # > 1200 frames
 
+# Concurrency configuration
+MAX_CONCURRENT_WORKERS = 3          # Maximum parallel video processing tasks
+TARGET_WINDOW_DEFAULT_MARGIN_S = 60.0 # +-1 min transaction window default
+
 # ==============================================================================
 # SECTION: ANSHIKA (Quality v2, Best Frame, Runner-ups & Evaluation Config)
 # ==============================================================================
@@ -45,10 +49,13 @@ MIN_FACE_HEIGHT_PIXELS = 18         # Below this, flag low_res and heavily penal
 MAX_RUNNER_UPS = 4                  # Number of alternate runner-up frames to keep
 MIN_RUNNER_UP_INTERVAL_SEC = 0.5    # Minimum temporal separation between runner-up frames
 
-# CLAHE (Contrast Limited Adaptive Histogram Equalization) for low-light crops
+# CLAHE & Deblurring Enhancers
 CLAHE_LUMINANCE_THRESHOLD = 45.0    # Mean L-channel brightness threshold to trigger enhancement
 CLAHE_CLIP_LIMIT = 2.5
 CLAHE_TILE_GRID_SIZE = (8, 8)
+DEBLUR_BLUR_THRESHOLD = 75.0        # Normalized sharpness below which deblur engine is triggered
+DEBLUR_USM_AMOUNT = 1.4             # Adaptive unsharp masking weight
+DEBLUR_USM_SIGMA = 1.2
 
 # ==============================================================================
 # SECTION: ADITI (Transactions, ROIs, Linking, Audit & Demo Auth)

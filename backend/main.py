@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, Form, BackgroundTasks, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -57,26 +57,40 @@ app.include_router(transactions_router)
 app.include_router(search_router)
 app.include_router(audit_router)
 
-# Execution lock: process one video upload at a time to prevent tracker ID collisions (T0.3)
-_VIDEO_PROCESSING_LOCK = threading.Lock()
-executor = ThreadPoolExecutor(max_workers=2)
+# Execution semaphore: allow up to MAX_CONCURRENT_WORKERS concurrent video processing tasks
+_VIDEO_PROCESSING_SEMAPHORE = threading.Semaphore(getattr(config, "MAX_CONCURRENT_WORKERS", 3))
+executor = ThreadPoolExecutor(max_workers=getattr(config, "MAX_CONCURRENT_WORKERS", 3) + 2)
 
 # In-memory task registry
 TASKS: Dict[str, Dict[str, Any]] = {}
 
-def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
-    """Worker function executed with single-processor concurrency guard."""
+def sync_process_video_wrapper(
+    task_id: str,
+    video_path: str,
+    output_dir: str,
+    atm_id: str = "ATM_CENTRAL_01",
+    location_name: str = "Central Branch Kiosk",
+    base_timestamp: Optional[str] = None,
+    target_time_s: Optional[float] = None,
+    window_margin_s: float = 60.0
+):
+    """Worker function executed with concurrency semaphore guard."""
     def on_progress(p: Dict[str, Any]):
         if task_id in TASKS:
             TASKS[task_id].update(p)
 
-    with _VIDEO_PROCESSING_LOCK:
+    with _VIDEO_PROCESSING_SEMAPHORE:
         try:
             processor = VideoProcessor(confidence_threshold=config.PERSON_CONFIDENCE_THRESHOLD)
             results = processor.process_video(
                 video_path=video_path,
                 output_dir=output_dir,
                 task_id=task_id,
+                atm_id=atm_id,
+                location_name=location_name,
+                base_timestamp=base_timestamp,
+                target_time_s=target_time_s,
+                window_margin_s=window_margin_s,
                 progress_callback=on_progress
             )
             TASKS[task_id] = {
@@ -89,7 +103,7 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
                 username="system",
                 role="service",
                 action="PROCESS_VIDEO",
-                detail=f"Completed video processing for task {task_id}: {len(results.get('tracks', []))} tracks identified"
+                detail=f"Completed video processing for task {task_id}: {len(results.get('tracks', []))} tracks identified at {location_name} ({atm_id})"
             )
         except Exception as e:
             print(f"[Worker Error] Task {task_id} failed: {e}")
@@ -122,10 +136,16 @@ async def health_check():
 async def upload_and_process(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    atm_id: str = Form("ATM_CENTRAL_01"),
+    location_name: str = Form("Central Branch Kiosk"),
+    base_timestamp: Optional[str] = Form(None),
+    target_time_s: Optional[float] = Form(None),
+    window_margin_s: float = Form(60.0),
     x_user: str = Header(default="investigator")
 ):
     """
     Receives an uploaded video, initiates YOLO tracking & best-frame extraction in background.
+    Supports targeted temporal windowing around a specific transaction time (target_time_s +/- window_margin_s).
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty filename")
@@ -149,14 +169,22 @@ async def upload_and_process(
         "tracks_count": 0,
         "current_frame": 0,
         "total_frames": 0,
-        "processing_fps": 0.0
+        "processing_fps": 0.0,
+        "atm_id": atm_id,
+        "location_name": location_name,
+        "target_time_s": target_time_s,
+        "window_margin_s": window_margin_s
     }
+
+    audit_detail = f"Uploaded {file.filename} (task: {task_id}) for {location_name} [{atm_id}]"
+    if target_time_s is not None:
+        audit_detail += f" (window: {target_time_s}s +/- {window_margin_s}s)"
 
     db.log_audit(
         username=x_user,
         role="investigator",
         action="UPLOAD_VIDEO",
-        detail=f"Uploaded {file.filename} (task: {task_id})"
+        detail=audit_detail
     )
 
     # Dispatch to background thread pool
@@ -164,12 +192,19 @@ async def upload_and_process(
         sync_process_video_wrapper,
         task_id=task_id,
         video_path=video_path,
-        output_dir=output_dir
+        output_dir=output_dir,
+        atm_id=atm_id,
+        location_name=location_name,
+        base_timestamp=base_timestamp,
+        target_time_s=target_time_s,
+        window_margin_s=window_margin_s
     )
 
     return {
         "task_id": task_id,
         "filename": file.filename,
+        "atm_id": atm_id,
+        "location_name": location_name,
         "status": "processing",
         "message": "Video queued for analysis"
     }

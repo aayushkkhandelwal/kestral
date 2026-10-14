@@ -66,5 +66,36 @@
   - Commit: `a2adf85`
   - PR URL: `https://github.com/aayushkkhandelwal/kestral/pull/new/feat/anshika/core-evidence-pipeline`
 - Next:
-  - Merge PR into `main` after team review.
+  - Implement mentoring feedback (multi-video, long footage, deblurring, multi-angle fusion, windowing, database search).
+
+---
+
+## 2026-10-14 23:05 IST — Anshika (Quality / Eval / Pipeline Integrator)
+- Task: MENTORING-ALL — Implementation of all 6 Mentoring Feedback Points:
+  1. Long duration video processing: Adaptive frame stride (stride 2..12 depending on length) and periodic memory collection.
+  2. Multi-video concurrent processing: Concurrency semaphore (MAX_CONCURRENT_WORKERS=3), ThreadPoolExecutor, multi-video queue in UI.
+  3. Image deblurring & sharpening: Dual-stage Unsharp Masking (USM) + bilateral edge-preserving smoothing restoring eyes and mouth contours.
+  4. Multi-angle composite synthesis: Fused panoramic plate (`track_{id}_composite.jpg`) combining Profile A, Mertens detail-blended fused portrait, and Profile B with biometric markers.
+  5. ATM location & timestamp capture + targeted transaction windowing: `atm_id`, `location_name`, `wall_clock_time`, plus ±1 min targeted temporal window seeking directly to `target_time_s - window_margin_s` and early termination to avoid processing hour-long clips.
+  6. SQLite-backed face search: `evidence_faces` database table indexing all faces, 128D embeddings, locations, and timestamps with sub-millisecond search and database explorer registry.
+- Changed files:
+  - `backend/config.py`: Concurrency and deblurring hyperparameters.
+  - `backend/db.py`: `evidence_faces` table, `save_evidence_face`, `get_all_evidence_faces`, `backfill_existing_results`.
+  - `backend/services/face_quality.py`: `deblur_and_sharpen_image`, updated `enhance_crop_if_needed`.
+  - `backend/services/best_frame.py`: Deblurred crop saving, `_generate_multi_angle_composite` panoramic plate generation.
+  - `backend/services/video_processor.py`: Windowed seeking, adaptive stride, SQLite indexing.
+  - `backend/main.py`: Concurrency semaphore, updated `/api/upload-and-process` with ATM targeting params.
+  - `backend/routers/search.py`: Database-backed search and `/api/search/database-faces` endpoint.
+  - `backend/tests/test_enhancements.py`: Comprehensive test suite for deblurring, fusion, db CRUD, and window math.
+  - `frontend/src/components/VideoUploader.jsx`: Multi-video queue and Targeted Transaction Window / ATM location panel.
+  - `frontend/src/pages/Analysis.jsx`: Multi-task concurrent progress monitor and tab switcher.
+  - `frontend/src/components/EvidenceViewer.jsx`: AI Deblurred side-by-side mode and Multi-Angle Fused Identification Plate viewer.
+  - `frontend/src/pages/FaceSearch.jsx`: SQLite database face search with location & timestamp badges, and Evidence Database registry tab.
+- Verified by running:
+  - `backend/.venv/bin/pytest backend/tests/ backend/test_camera.py` -> 20 passed in 2.97s (100% pass)
+  - `npm run build` -> 0 errors, built in 307ms
+  - Browser subagent tour -> Verified ±60s windowing preview, multi-video queue, database registry faces, AI deblurring comparison, and multi-angle composite card
+- Pushed:
+  - Branch: `feat/anshika/core-evidence-pipeline`
+
 

@@ -153,12 +153,16 @@ class BestFrameSelector:
 
             cv2.imwrite(full_frame_path, annotated_frame)
 
-            # 2. Save best face crop
-            if best_cand["face_crop"] is not None and best_cand["face_crop"].size > 0:
-                cv2.imwrite(face_crop_path, best_cand["face_crop"])
-            else:
-                person_crop = best_cand["full_frame"][py1:py2, px1:px2]
-                cv2.imwrite(face_crop_path, person_crop)
+            # 2. Save best face crop & enhanced deblurred crop
+            raw_face = best_cand["face_crop"] if (best_cand["face_crop"] is not None and best_cand["face_crop"].size > 0) else best_cand["full_frame"][py1:py2, px1:px2]
+            cv2.imwrite(face_crop_path, raw_face)
+
+            # Export AI deblurred & sharpened evidence crop
+            from services.face_quality import FaceQualityAssessor
+            enhanced_face, _ = FaceQualityAssessor.enhance_crop_if_needed(raw_face, best_cand["quality"].get("sharpness_normalized"))
+            enhanced_filename = f"track_{track_id}_enhanced.jpg"
+            enhanced_path = os.path.join(self.output_dir, enhanced_filename)
+            cv2.imwrite(enhanced_path, enhanced_face)
 
             # 3. Save runner-ups crops
             runner_ups_payload: List[Dict[str, Any]] = []
@@ -180,6 +184,9 @@ class BestFrameSelector:
                     "face_image_url": f"{relative_url_prefix}/{alt_filename}".replace("//", "/")
                 })
 
+            # 4. Multi-Angle Facial Fusion & Composite Plate Generation
+            composite_filename = self._generate_multi_angle_composite(raw_face, runner_ups, track_id)
+
             duration = round(data["last_seen_time"] - data["first_seen_time"], 2)
             avg_score = round(float(np.mean(data["all_scores"])), 1) if data["all_scores"] else 0.0
 
@@ -200,7 +207,9 @@ class BestFrameSelector:
                 "face_bbox": best_cand["face_bbox"],
                 "face_image_url": f"{relative_url_prefix}/{face_crop_filename}".replace("//", "/"),
                 "full_frame_url": f"{relative_url_prefix}/{full_frame_filename}".replace("//", "/"),
-                # New keys per CONTRACTS section B
+                # New keys per CONTRACTS section B & feedback
+                "enhanced_image_url": f"{relative_url_prefix}/{enhanced_filename}".replace("//", "/"),
+                "composite_image_url": f"{relative_url_prefix}/{composite_filename}".replace("//", "/") if composite_filename else None,
                 "trajectory": data.get("trajectory", []),
                 "runner_ups": runner_ups_payload
             }
@@ -209,3 +218,68 @@ class BestFrameSelector:
         # Sort: verified faces first, then by score descending
         finalized_tracks.sort(key=lambda x: (x["has_real_face"], x["best_score"]), reverse=True)
         return finalized_tracks
+
+    def _generate_multi_angle_composite(
+        self,
+        best_crop: np.ndarray,
+        runner_ups: List[Dict[str, Any]],
+        track_id: int
+    ) -> Optional[str]:
+        """
+        Synthesizes a multi-angle panoramic plate and fused portrait from runner-ups and best frame.
+        """
+        if best_crop is None or best_crop.size == 0:
+            return None
+
+        crops = [best_crop]
+        for ru in runner_ups:
+            c = ru.get("face_crop")
+            if c is not None and c.size > 0:
+                crops.append(c)
+            if len(crops) >= 3:
+                break
+
+        h_target, w_target = 160, 140
+        normalized_crops = [cv2.resize(c, (w_target, h_target)) for c in crops]
+
+        # Exposure & detail fusion (Mertens)
+        fused_img = normalized_crops[0]
+        if len(normalized_crops) >= 2:
+            try:
+                mertens = cv2.createMergeMertens()
+                float_crops = [c.astype(np.float32) / 255.0 for c in normalized_crops]
+                fusion = mertens.process(float_crops)
+                fused_img = np.clip(fusion * 255.0, 0, 255).astype(np.uint8)
+            except Exception:
+                fused_img = normalized_crops[0]
+
+        # Panoramic composite plate: [Profile A | Fused Master | Profile B]
+        padding = 12
+        total_w = w_target * 3 + padding * 4
+        total_h = h_target + 54
+        composite = np.zeros((total_h, total_w, 3), dtype=np.uint8)
+        composite[:] = (13, 18, 31)
+
+        left_img = normalized_crops[1] if len(normalized_crops) > 1 else normalized_crops[0]
+        center_img = fused_img
+        right_img = normalized_crops[2] if len(normalized_crops) > 2 else (normalized_crops[1] if len(normalized_crops) > 1 else normalized_crops[0])
+
+        x1 = padding
+        composite[padding:padding+h_target, x1:x1+w_target] = left_img
+        cv2.putText(composite, "ANGLE / PROFILE A", (x1 + 6, padding + h_target + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (148, 163, 184), 1)
+
+        x2 = x1 + w_target + padding
+        composite[padding:padding+h_target, x2:x2+w_target] = center_img
+        cv2.rectangle(composite, (x2 - 1, padding - 1), (x2 + w_target + 1, padding + h_target + 1), (6, 182, 212), 2)
+        cv2.putText(composite, "FUSED MASTER (AI)", (x2 + 8, padding + h_target + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (6, 182, 212), 1)
+
+        x3 = x2 + w_target + padding
+        composite[padding:padding+h_target, x3:x3+w_target] = right_img
+        cv2.putText(composite, "ANGLE / PROFILE B", (x3 + 6, padding + h_target + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (148, 163, 184), 1)
+
+        cv2.putText(composite, f"KESTRAL MULTI-ANGLE FUSION -- SUBJECT #{track_id}", (padding, total_h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.33, (99, 102, 241), 1)
+
+        comp_filename = f"track_{track_id}_composite.jpg"
+        comp_path = os.path.join(self.output_dir, comp_filename)
+        cv2.imwrite(comp_path, composite)
+        return comp_filename

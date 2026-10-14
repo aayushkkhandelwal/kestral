@@ -1,6 +1,6 @@
 """
 Biometric Face Search Router
-Performs 128-dimensional cosine feature similarity matching across all historical evidence archives.
+Performs 128-dimensional cosine feature similarity matching backed by SQLite evidence_faces database.
 Mandatory note: Output indicates visual similarity only and requires human verification.
 """
 import os
@@ -31,15 +31,38 @@ def cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
         return 0.0
     return float(np.dot(v1, v2) / (norm1 * norm2))
 
+@router.get("/database-faces")
+def list_indexed_evidence_faces(
+    atm_id: Optional[str] = Query(None),
+    limit: int = Query(default=100, ge=1, le=500)
+):
+    """
+    Returns indexed biometric face evidence from the SQLite database with location and timestamp metadata.
+    """
+    faces = db.get_all_evidence_faces(atm_id=atm_id, limit=limit)
+    # Strip heavy embedding_json before returning to API client
+    safe_faces = []
+    for f in faces:
+        c = dict(f)
+        c.pop("embedding", None)
+        safe_faces.append(c)
+    return {
+        "total_indexed": len(safe_faces),
+        "atm_filter": atm_id,
+        "faces": safe_faces
+    }
+
 @router.post("/face")
 async def search_face_similarity(
     file: UploadFile = File(...),
+    atm_id: Optional[str] = Query(None, description="Optional ATM ID filter"),
     top_k: int = Query(default=5, ge=1, le=20),
     x_user: str = Header(default="investigator")
 ):
     """
-    Compares probe facial image against all indexed evidence tracks using SFace feature vectors.
-    Returns ranked candidate list with similarity scores.
+    Compares probe facial image against all indexed evidence tracks stored in SQLite database.
+    Computes 128-dimensional cosine feature similarity and returns ranked candidate matches with
+    ATM location, wall-clock timestamp, deblurred face, and multi-angle composite card URLs.
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Empty image upload")
@@ -81,8 +104,38 @@ async def search_face_similarity(
 
     candidates: List[Dict[str, Any]] = []
 
-    # Iterate through all task results in RESULTS_DIR
-    if os.path.exists(config.RESULTS_DIR):
+    # Query indexed faces directly from SQLite database
+    db_faces = db.get_all_evidence_faces(atm_id=atm_id, limit=500)
+
+    for face in db_faces:
+        cand_emb_raw = face.get("embedding")
+        if not cand_emb_raw:
+            continue
+
+        cand_emb = np.array(cand_emb_raw, dtype=np.float32)
+        if len(cand_emb) == len(probe_emb):
+            sim = cosine_similarity(probe_emb, cand_emb)
+            # Normalize cosine similarity [-1, 1] to [0, 1]
+            norm_sim = round(max(0.0, min(1.0, (sim + 1.0) / 2.0 if sim < 1.0 else sim)), 3)
+            candidates.append({
+                "face_id": face.get("face_id"),
+                "task_id": face.get("task_id"),
+                "track_id": face.get("track_id"),
+                "atm_id": face.get("atm_id", "ATM_CENTRAL_01"),
+                "location_name": face.get("location_name", "Central Branch Kiosk"),
+                "wall_clock_time": face.get("wall_clock_time"),
+                "similarity": norm_sim,
+                "face_image_url": face.get("face_image_url"),
+                "enhanced_image_url": face.get("enhanced_image_url"),
+                "composite_image_url": face.get("composite_image_url"),
+                "full_frame_url": face.get("full_frame_url"),
+                "quality_score": face.get("quality_score", 0.0),
+                "timestamp": face.get("timestamp_s", 0.0),
+                "note": "similarity only; needs human review"
+            })
+
+    # Fallback to filesystem scan if SQLite returned 0 records (e.g. freshly mounted volume)
+    if not candidates and os.path.exists(config.RESULTS_DIR):
         for task_id in os.listdir(config.RESULTS_DIR):
             task_dir = os.path.join(config.RESULTS_DIR, task_id)
             if not os.path.isdir(task_dir):
@@ -90,7 +143,6 @@ async def search_face_similarity(
 
             results_json = os.path.join(task_dir, "results.json")
             embeddings_json = os.path.join(task_dir, "embeddings.json")
-
             if not os.path.exists(results_json):
                 continue
 
@@ -100,7 +152,6 @@ async def search_face_similarity(
             except Exception:
                 continue
 
-            # Load saved embeddings if present
             task_embeddings: Dict[str, List[float]] = {}
             if os.path.exists(embeddings_json):
                 try:
@@ -115,9 +166,7 @@ async def search_face_similarity(
                 crop_filename = f"track_{tid}_face.jpg"
                 crop_path = os.path.join(task_dir, crop_filename)
 
-                cand_emb: Optional[np.ndarray] = None
-
-                # Check precomputed embeddings
+                cand_emb = None
                 str_tid = str(tid)
                 if str_tid in task_embeddings:
                     cand_emb = np.array(task_embeddings[str_tid], dtype=np.float32)
@@ -133,14 +182,9 @@ async def search_face_similarity(
                                     cand_emb = (feat / norm).flatten()
                             except Exception:
                                 pass
-                        if cand_emb is None:
-                            rz = cv2.resize(cand_img, (64, 64))
-                            cand_emb = cv2.cvtColor(rz, cv2.COLOR_BGR2GRAY).flatten().astype(np.float32)
-                            cand_emb /= max(1.0, np.linalg.norm(cand_emb))
 
                 if cand_emb is not None and len(cand_emb) == len(probe_emb):
                     sim = cosine_similarity(probe_emb, cand_emb)
-                    # Normalize cosine sim to 0..1 scale
                     norm_sim = round(max(0.0, min(1.0, (sim + 1.0) / 2.0 if sim < 1.0 else sim)), 3)
                     candidates.append({
                         "task_id": task_id,
@@ -160,7 +204,7 @@ async def search_face_similarity(
         username=x_user,
         role="investigator",
         action="FACE_SEARCH",
-        detail=f"Searched probe image ({file.filename}) against evidence archive; returned {len(top_matches)} matches"
+        detail=f"Searched probe image ({file.filename}) against SQLite evidence database; returned {len(top_matches)} matches"
     )
 
     return top_matches

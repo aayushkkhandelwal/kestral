@@ -47,7 +47,12 @@ class VideoProcessor:
         video_path: str,
         output_dir: str,
         task_id: str,
-        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+        atm_id: str = "ATM_CENTRAL_01",
+        location_name: str = "Central Branch Kiosk",
+        base_timestamp: Optional[str] = None,
+        target_time_s: Optional[float] = None,
+        window_margin_s: float = config.TARGET_WINDOW_DEFAULT_MARGIN_S
     ) -> Dict[str, Any]:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found at: {video_path}")
@@ -64,10 +69,30 @@ class VideoProcessor:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         duration = round(total_frames / fps, 2) if fps > 0 else 0.0
 
-        # Dynamic stride for fast processing
-        if total_frames > 1200:
+        # Handle targeted transaction window (e.g., +- 60s around transaction time)
+        window_start_s: Optional[float] = None
+        window_end_s: Optional[float] = None
+        start_frame = 0
+        target_total_frames = total_frames
+
+        if target_time_s is not None and target_time_s >= 0:
+            window_start_s = max(0.0, float(target_time_s) - float(window_margin_s))
+            window_end_s = min(duration, float(target_time_s) + float(window_margin_s))
+            start_frame = max(0, int(window_start_s * fps))
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+            frame_idx = start_frame
+            target_total_frames = max(1, int((window_end_s - window_start_s) * fps))
+        else:
+            frame_idx = 0
+
+        # Dynamic stride for fast processing and scaling to long duration footage
+        if target_total_frames > 15000:
+            frame_stride = 12
+        elif target_total_frames > 5000:
+            frame_stride = 8
+        elif target_total_frames > 1200:
             frame_stride = config.STRIDE_LONG
-        elif total_frames > 400:
+        elif target_total_frames > 400:
             frame_stride = config.STRIDE_MEDIUM
         else:
             frame_stride = config.STRIDE_SHORT
@@ -81,7 +106,6 @@ class VideoProcessor:
         thumbnail_path = os.path.join(output_dir, thumbnail_filename)
 
         start_time = time.time()
-        frame_idx = 0
         processed_frames_count = 0
         total_detections_count = 0
 
@@ -94,8 +118,8 @@ class VideoProcessor:
                 "task_id": task_id,
                 "status": "processing",
                 "progress": 2.0,
-                "current_frame": 0,
-                "total_frames": total_frames,
+                "current_frame": frame_idx,
+                "total_frames": target_total_frames,
                 "processing_fps": 0.0,
                 "tracks_count": 0
             })
@@ -106,14 +130,17 @@ class VideoProcessor:
                 if not ret:
                     break
 
-                # Save first valid frame as thumbnail for ATM ROI polygon definition (T0.8)
+                # Save first valid frame as thumbnail for ATM ROI polygon definition
                 if not thumbnail_saved:
                     cv2.imwrite(thumbnail_path, frame)
                     thumbnail_saved = True
 
-                if frame_idx % frame_stride == 0:
-                    timestamp_sec = round(frame_idx / fps, 2)
+                timestamp_sec = round(frame_idx / fps, 2)
+                # Check if we passed the targeted transaction window
+                if window_end_s is not None and timestamp_sec > window_end_s:
+                    break
 
+                if (frame_idx - start_frame) % frame_stride == 0:
                     # 1. Detect and track persons
                     detections = self.person_detector.track(frame, persist=True)
                     total_detections_count += len(detections)
@@ -162,9 +189,18 @@ class VideoProcessor:
 
                     processed_frames_count += 1
 
+                    # Periodic memory cleanup for long videos
+                    if processed_frames_count % 250 == 0:
+                        import gc
+                        gc.collect()
+
                     # Send smooth real-time progress updates every 2 sampled frames
-                    if progress_callback and (processed_frames_count % 2 == 0 or frame_idx >= total_frames - frame_stride):
-                        pct = min(99.0, max(2.0, round((frame_idx / max(1, total_frames)) * 100, 1)))
+                    if progress_callback and (processed_frames_count % 2 == 0 or (frame_idx - start_frame) >= target_total_frames - frame_stride):
+                        if window_start_s is not None:
+                            progress_ratio = (frame_idx - start_frame) / max(1, target_total_frames)
+                        else:
+                            progress_ratio = frame_idx / max(1, total_frames)
+                        pct = min(99.0, max(2.0, round(progress_ratio * 100, 1)))
                         elapsed = time.time() - start_time
                         curr_fps = round(processed_frames_count / max(0.001, elapsed), 1)
                         progress_callback({
@@ -172,7 +208,7 @@ class VideoProcessor:
                             "status": "processing",
                             "progress": pct,
                             "current_frame": frame_idx,
-                            "total_frames": total_frames,
+                            "total_frames": target_total_frames,
                             "processing_fps": curr_fps,
                             "tracks_count": len(selector.tracks)
                         })
@@ -182,7 +218,7 @@ class VideoProcessor:
         finally:
             cap.release()
 
-        # Finalize evidence crops and runner-ups
+        # Finalize evidence crops, deblurred images, and multi-angle composites
         relative_url_prefix = f"/results/{task_id}"
         tracks_summary = selector.finalize(relative_url_prefix=relative_url_prefix)
 
@@ -191,6 +227,41 @@ class VideoProcessor:
             embeddings_file = os.path.join(output_dir, "embeddings.json")
             with open(embeddings_file, "w") as f:
                 json.dump(track_embeddings, f)
+
+        # Automatically index faces into SQLite evidence_faces table
+        import db
+        import datetime
+        for t in tracks_summary:
+            tid = t["track_id"]
+            str_tid = str(tid)
+            emb = track_embeddings.get(tid) or track_embeddings.get(str_tid)
+            if emb:
+                ts = t.get("best_timestamp", 0.0)
+                wall_clock = None
+                if base_timestamp:
+                    try:
+                        base_dt = datetime.datetime.fromisoformat(base_timestamp.replace("Z", "+00:00"))
+                        wall_clock = (base_dt + datetime.timedelta(seconds=ts)).isoformat()
+                    except Exception:
+                        wall_clock = None
+                if not wall_clock:
+                    wall_clock = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+                db.save_evidence_face(
+                    task_id=task_id,
+                    track_id=tid,
+                    atm_id=atm_id,
+                    location_name=location_name,
+                    timestamp_s=ts,
+                    wall_clock_time=wall_clock,
+                    face_image_url=t.get("face_image_url"),
+                    full_frame_url=t.get("full_frame_url"),
+                    enhanced_image_url=t.get("enhanced_image_url"),
+                    composite_image_url=t.get("composite_image_url"),
+                    quality_score=t.get("best_score", 0.0),
+                    has_real_face=t.get("has_real_face", True),
+                    embedding=emb
+                )
 
         elapsed_total = round(time.time() - start_time, 2)
         avg_quality = (
@@ -210,7 +281,13 @@ class VideoProcessor:
                 "duration_seconds": duration,
                 "frames_processed": processed_frames_count,
                 "elapsed_time_sec": elapsed_total,
-                "thumbnail_url": f"{relative_url_prefix}/{thumbnail_filename}"
+                "thumbnail_url": f"{relative_url_prefix}/{thumbnail_filename}",
+                "atm_id": atm_id,
+                "location_name": location_name,
+                "base_timestamp": base_timestamp,
+                "target_time_s": target_time_s,
+                "window_start_s": window_start_s,
+                "window_end_s": window_end_s
             },
             "summary": {
                 "unique_persons_tracked": len(tracks_summary),

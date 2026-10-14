@@ -59,6 +59,29 @@ def init_db():
     );
     """)
 
+    # 4. Evidence Faces Table (Biometric Database Indexing)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS evidence_faces (
+        face_id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        track_id INTEGER NOT NULL,
+        atm_id TEXT NOT NULL,
+        location_name TEXT,
+        timestamp_s REAL NOT NULL,
+        wall_clock_time TEXT,
+        face_image_url TEXT NOT NULL,
+        full_frame_url TEXT NOT NULL,
+        enhanced_image_url TEXT,
+        composite_image_url TEXT,
+        quality_score REAL NOT NULL,
+        has_real_face INTEGER NOT NULL,
+        embedding_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_faces_task ON evidence_faces(task_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_faces_atm ON evidence_faces(atm_id);")
+
     conn.commit()
     conn.close()
 
@@ -257,5 +280,145 @@ def get_audit_logs(limit: int = 100) -> List[Dict[str, Any]]:
         })
     return logs
 
-# Ensure DB initialized on module load
+# ---------------------------------------------------------------------------
+# Evidence Face Operations (Biometric Indexing & Face Search)
+# ---------------------------------------------------------------------------
+def save_evidence_face(
+    task_id: str,
+    track_id: int,
+    atm_id: str,
+    location_name: str,
+    timestamp_s: float,
+    wall_clock_time: Optional[str],
+    face_image_url: str,
+    full_frame_url: str,
+    quality_score: float,
+    has_real_face: bool,
+    embedding: List[float],
+    enhanced_image_url: Optional[str] = None,
+    composite_image_url: Optional[str] = None
+) -> Dict[str, Any]:
+    face_id = f"{task_id}_{track_id}"
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO evidence_faces (
+            face_id, task_id, track_id, atm_id, location_name,
+            timestamp_s, wall_clock_time, face_image_url, full_frame_url,
+            enhanced_image_url, composite_image_url, quality_score,
+            has_real_face, embedding_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(face_id) DO UPDATE SET
+            atm_id=excluded.atm_id,
+            location_name=excluded.location_name,
+            timestamp_s=excluded.timestamp_s,
+            wall_clock_time=excluded.wall_clock_time,
+            face_image_url=excluded.face_image_url,
+            full_frame_url=excluded.full_frame_url,
+            enhanced_image_url=excluded.enhanced_image_url,
+            composite_image_url=excluded.composite_image_url,
+            quality_score=excluded.quality_score,
+            has_real_face=excluded.has_real_face,
+            embedding_json=excluded.embedding_json
+    """, (
+        face_id, task_id, track_id, atm_id, location_name,
+        timestamp_s, wall_clock_time, face_image_url, full_frame_url,
+        enhanced_image_url, composite_image_url, quality_score,
+        1 if has_real_face else 0, json.dumps(embedding), now
+    ))
+    conn.commit()
+    conn.close()
+    return {"face_id": face_id, "status": "saved"}
+
+def get_all_evidence_faces(atm_id: Optional[str] = None, limit: int = 500) -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    if atm_id:
+        cursor.execute("SELECT * FROM evidence_faces WHERE atm_id = ? ORDER BY timestamp_s DESC LIMIT ?", (atm_id, limit))
+    else:
+        cursor.execute("SELECT * FROM evidence_faces ORDER BY created_at DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    results = []
+    for r in rows:
+        results.append({
+            "face_id": r["face_id"],
+            "task_id": r["task_id"],
+            "track_id": r["track_id"],
+            "atm_id": r["atm_id"],
+            "location_name": r["location_name"] or "ATM Kiosk",
+            "timestamp_s": r["timestamp_s"],
+            "wall_clock_time": r["wall_clock_time"],
+            "face_image_url": r["face_image_url"],
+            "full_frame_url": r["full_frame_url"],
+            "enhanced_image_url": r["enhanced_image_url"],
+            "composite_image_url": r["composite_image_url"],
+            "quality_score": r["quality_score"],
+            "has_real_face": bool(r["has_real_face"]),
+            "embedding": json.loads(r["embedding_json"])
+        })
+    return results
+
+def backfill_existing_results():
+    """Scans results directory and indexes any unindexed tracks into evidence_faces table."""
+    import os
+    from config import RESULTS_DIR
+    if not os.path.exists(RESULTS_DIR):
+        return
+    for task_id in os.listdir(RESULTS_DIR):
+        task_dir = os.path.join(RESULTS_DIR, task_id)
+        if not os.path.isdir(task_dir):
+            continue
+        res_file = os.path.join(task_dir, "results.json")
+        emb_file = os.path.join(task_dir, "embeddings.json")
+        if not os.path.exists(res_file) or not os.path.exists(emb_file):
+            continue
+        try:
+            with open(res_file, "r") as f:
+                res_data = json.load(f)
+            with open(emb_file, "r") as f:
+                embeddings = json.load(f)
+            atm_id = res_data.get("metadata", {}).get("atm_id", "ATM_CENTRAL_01")
+            location_name = res_data.get("metadata", {}).get("location_name", "Central Branch Kiosk")
+            base_time_str = res_data.get("metadata", {}).get("base_timestamp")
+            
+            for track in res_data.get("tracks", []):
+                tid = track.get("track_id")
+                str_tid = str(tid)
+                if str_tid not in embeddings:
+                    continue
+                emb = embeddings[str_tid]
+                ts = track.get("best_timestamp", 0.0)
+                wall_clock = None
+                if base_time_str:
+                    try:
+                        base_dt = datetime.datetime.fromisoformat(base_time_str.replace("Z", "+00:00"))
+                        wall_clock = (base_dt + datetime.timedelta(seconds=ts)).isoformat()
+                    except Exception:
+                        wall_clock = None
+                if not wall_clock:
+                    wall_clock = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+                save_evidence_face(
+                    task_id=task_id,
+                    track_id=tid,
+                    atm_id=atm_id,
+                    location_name=location_name,
+                    timestamp_s=ts,
+                    wall_clock_time=wall_clock,
+                    face_image_url=track.get("face_image_url", f"/results/{task_id}/track_{tid}_face.jpg"),
+                    full_frame_url=track.get("full_frame_url", f"/results/{task_id}/track_{tid}_full.jpg"),
+                    enhanced_image_url=f"/results/{task_id}/track_{tid}_enhanced.jpg" if os.path.exists(os.path.join(task_dir, f"track_{tid}_enhanced.jpg")) else None,
+                    composite_image_url=f"/results/{task_id}/track_{tid}_composite.jpg" if os.path.exists(os.path.join(task_dir, f"track_{tid}_composite.jpg")) else None,
+                    quality_score=track.get("best_score", 0.0),
+                    has_real_face=track.get("has_real_face", True),
+                    embedding=emb
+                )
+        except Exception:
+            pass
+
+# Ensure DB initialized on module load and backfilled
 init_db()
+backfill_existing_results()
+

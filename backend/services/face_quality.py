@@ -16,15 +16,53 @@ class FaceQualityAssessor:
     """
 
     @staticmethod
-    def enhance_crop_if_needed(crop_img: np.ndarray) -> (np.ndarray, bool):
+    def deblur_and_sharpen_image(
+        crop_img: np.ndarray,
+        amount: float = config.DEBLUR_USM_AMOUNT,
+        sigma: float = config.DEBLUR_USM_SIGMA
+    ) -> np.ndarray:
         """
-        Applies CLAHE on the L-channel of LAB color space if the crop is underexposed.
+        Enhances blurry face images using dual-stage Unsharp Masking (USM)
+        and edge-preserving bilateral smoothing to recover crisp facial contours.
+        """
+        if crop_img is None or crop_img.size == 0:
+            return crop_img
+
+        # 1. Bilateral filtering to preserve true edges while suppressing high-frequency sensor noise
+        denoised = cv2.bilateralFilter(crop_img, d=5, sigmaColor=35, sigmaSpace=35)
+
+        # 2. Gaussian blur for frequency separation
+        blurred = cv2.GaussianBlur(denoised, (0, 0), sigmaX=sigma)
+
+        # 3. Add weighted unsharp mask
+        sharpened = cv2.addWeighted(denoised, 1.0 + amount, blurred, -amount, 0)
+
+        # 4. Subtle high-pass detail boost for facial features (eyes, nose, mouth)
+        kernel = np.array([
+            [0, -0.25, 0],
+            [-0.25, 2.0, -0.25],
+            [0, -0.25, 0]
+        ], dtype=np.float32)
+        boosted = cv2.filter2D(sharpened, -1, kernel)
+
+        # Blend to prevent harsh over-sharpening halos
+        result = cv2.addWeighted(sharpened, 0.70, boosted, 0.30, 0)
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    @staticmethod
+    def enhance_crop_if_needed(crop_img: np.ndarray, sharpness_norm: Optional[float] = None) -> (np.ndarray, bool):
+        """
+        Applies CLAHE for low-light crops AND adaptive deblurring for blurry crops.
         Returns (enhanced_crop, is_enhanced).
         """
         if crop_img is None or crop_img.size == 0:
             return crop_img, False
 
-        lab = cv2.cvtColor(crop_img, cv2.COLOR_BGR2LAB)
+        enhanced = crop_img.copy()
+        is_enhanced = False
+
+        # 1. Low-light CLAHE
+        lab = cv2.cvtColor(enhanced, cv2.COLOR_BGR2LAB)
         l_channel, a_channel, b_channel = cv2.split(lab)
         mean_l = float(np.mean(l_channel))
 
@@ -35,10 +73,22 @@ class FaceQualityAssessor:
             )
             l_enhanced = clahe.apply(l_channel)
             lab_enhanced = cv2.merge((l_enhanced, a_channel, b_channel))
-            enhanced_bgr = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-            return enhanced_bgr, True
+            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+            is_enhanced = True
 
-        return crop_img, False
+        # 2. Deblurring if sharpness is below threshold
+        norm_sharp = sharpness_norm
+        if norm_sharp is None:
+            norm_rz = cv2.resize(crop_img, (112, 112))
+            gray = cv2.cvtColor(norm_rz, cv2.COLOR_BGR2GRAY)
+            lap = cv2.Laplacian(gray, cv2.CV_64F).var()
+            norm_sharp = round(min(100.0, (lap / config.SHARPNESS_REFERENCE) * 100.0), 1)
+
+        if norm_sharp < config.DEBLUR_BLUR_THRESHOLD:
+            enhanced = FaceQualityAssessor.deblur_and_sharpen_image(enhanced)
+            is_enhanced = True
+
+        return enhanced, is_enhanced
 
     @staticmethod
     def assess_crop(
