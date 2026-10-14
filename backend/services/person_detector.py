@@ -1,27 +1,57 @@
 import os
 from typing import List, Dict, Any, Optional
 import numpy as np
+import config
+
+try:
+    import torch
+    HAS_TORCH = True
+except ImportError:
+    HAS_TORCH = False
+
 from ultralytics import YOLO
 
 class PersonDetector:
     """
-    Person detection and multi-object tracking service utilizing YOLOv8.
-    Optimized for CPU real-time inference with input downscaling and localized model cache.
+    Person detection and multi-object tracking service utilizing YOLO.
+    Configurable for CPU / GPU inference with explicit device assignment and ByteTrack tracking.
     """
-    def __init__(self, model_name: str = "yolov8n.pt", confidence_threshold: float = 0.35):
-        self.confidence_threshold = confidence_threshold
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        confidence_threshold: Optional[float] = None,
+        imgsz: Optional[int] = None
+    ):
+        self.confidence_threshold = (
+            confidence_threshold if confidence_threshold is not None
+            else config.PERSON_CONFIDENCE_THRESHOLD
+        )
+        self.imgsz = imgsz if imgsz is not None else config.PERSON_IMGSZ
         self._fallback_counter = 1
-        
-        # Check if local weight file exists in backend root
+
+        # Real GPU / accelerator detection
+        self.cuda_available = False
+        self.device = "cpu"
+        if HAS_TORCH:
+            if torch.cuda.is_available():
+                self.cuda_available = True
+                self.device = "cuda:0"
+            elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                self.device = "mps"
+
+        chosen_model = model_name or config.PERSON_MODEL_NAME
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        local_weight = os.path.join(backend_dir, "yolov8n.pt")
-        target_model = local_weight if os.path.exists(local_weight) else model_name
+        local_weight = os.path.join(backend_dir, chosen_model)
+        target_model = local_weight if os.path.exists(local_weight) else chosen_model
 
         try:
             self.model = YOLO(target_model)
+            self.model_name = chosen_model
+            print(f"[PersonDetector] Loaded {chosen_model} on device={self.device}")
         except Exception as e:
             print(f"[PersonDetector] Loading {target_model} failed ({e}), falling back to yolov8n.pt")
             self.model = YOLO("yolov8n.pt")
+            self.model_name = "yolov8n.pt"
 
     def track(self, frame: np.ndarray, persist: bool = True) -> List[Dict[str, Any]]:
         """
@@ -32,13 +62,13 @@ class PersonDetector:
             return detections
 
         try:
-            # Run tracker with imgsz=480 for 3-5x CPU inference acceleration
             results = self.model.track(
                 source=frame,
                 persist=persist,
-                classes=[0],
+                classes=[0],  # COCO person class only
                 conf=self.confidence_threshold,
-                imgsz=480,
+                imgsz=self.imgsz,
+                device=self.device,
                 verbose=False
             )
             
@@ -100,6 +130,7 @@ class PersonDetector:
     def reset_tracker(self):
         """
         Clears temporal tracking state and resets ByteTrack tracker.
+        Prevents track ID collisions across sequential video uploads.
         """
         self._fallback_counter = 1
         try:
@@ -109,5 +140,6 @@ class PersonDetector:
                         if hasattr(tracker, "reset"):
                             tracker.reset()
                     self.model.predictor.trackers = []
+            print("[PersonDetector] ByteTrack state successfully reset.")
         except Exception as e:
             print(f"[PersonDetector] reset_tracker warning: {e}")

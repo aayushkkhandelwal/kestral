@@ -7,10 +7,14 @@ import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Evidence from './pages/Evidence';
 import LiveCamera from './pages/LiveCamera';
+import Transactions from './pages/Transactions';
+import FaceSearch from './pages/FaceSearch';
+import AuditLog from './pages/AuditLog';
 
 export default function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [backendOnline, setBackendOnline] = useState(false);
+  const [healthInfo, setHealthInfo] = useState(null);
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -18,6 +22,7 @@ export default function App() {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('kestral_theme') || 'dark';
   });
+  const [currentUser, setCurrentUser] = useState('investigator');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -28,6 +33,11 @@ export default function App() {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
+  // Configure default X-User header for all axios requests
+  useEffect(() => {
+    axios.defaults.headers.common['X-User'] = currentUser;
+  }, [currentUser]);
+
   const refreshSystemData = async () => {
     // 1. Lightweight health ping (dedicated 8s timeout)
     try {
@@ -35,6 +45,7 @@ export default function App() {
       if (healthRes.status === 200) {
         failureCountRef.current = 0;
         setBackendOnline(true);
+        setHealthInfo(healthRes.data);
       }
     } catch {
       failureCountRef.current += 1;
@@ -145,6 +156,8 @@ export default function App() {
           setMobileMenuOpen(false);
         }}
         backendOnline={backendOnline}
+        healthInfo={healthInfo}
+        currentUser={currentUser}
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
         theme={theme}
@@ -163,16 +176,31 @@ export default function App() {
           />
         )}
 
-        {activePage === 'live-camera' && (
-          <LiveCamera />
+        {activePage === 'transactions' && (
+          <Transactions onNavigateToEvidence={() => setActivePage('evidence')} />
+        )}
+
+        {activePage === 'evidence' && (
+          <Evidence />
+        )}
+
+        {activePage === 'search' && (
+          <FaceSearch onNavigateToEvidence={() => setActivePage('evidence')} />
         )}
 
         {activePage === 'analysis' && (
           <Analysis onRefreshStats={refreshSystemData} />
         )}
 
-        {activePage === 'evidence' && (
-          <Evidence />
+        {activePage === 'live-camera' && (
+          <LiveCamera />
+        )}
+
+        {activePage === 'audit' && (
+          <AuditLog
+            currentUser={currentUser}
+            onSwitchUser={(user) => setCurrentUser(user)}
+          />
         )}
       </main>
     </div>

@@ -10,6 +10,9 @@ import {
   ExternalLink,
   Sun,
   Moon,
+  CreditCard,
+  Search,
+  FileText,
   X 
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -18,6 +21,8 @@ export default function Sidebar({
   activePage, 
   setActivePage, 
   backendOnline = true,
+  healthInfo = null,
+  currentUser = 'investigator',
   isOpen = false,
   onClose,
   theme = 'dark',
@@ -25,10 +30,17 @@ export default function Sidebar({
 }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'live-camera', label: 'Live Camera', icon: Camera },
-    { id: 'analysis', label: 'Video Analysis', icon: Video },
+    { id: 'transactions', label: 'ATM Transactions', icon: CreditCard },
     { id: 'evidence', label: 'Evidence Vault', icon: ShieldCheck },
+    { id: 'search', label: 'Face Search', icon: Search },
+    { id: 'analysis', label: 'Video Analysis', icon: Video },
+    { id: 'live-camera', label: 'Live Camera', icon: Camera },
+    { id: 'audit', label: 'Audit Trail', icon: FileText },
   ];
+
+  const cudaText = healthInfo?.cuda_available ? 'CUDA GPU' : 'MPS / CPU Acceleration';
+  const personModel = healthInfo?.person_model || 'YOLOv8n ByteTrack';
+  const faceModel = healthInfo?.face_model_loaded ? 'YuNet DNN (Loaded)' : 'YuNet DNN';
 
   return (
     <aside 
@@ -68,12 +80,11 @@ export default function Sidebar({
                 KESTRAL
               </h1>
               <p style={{ fontSize: '0.68rem', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.08em' }}>
-                VISION INTELLIGENCE
+                ATM VISION INTELLIGENCE
               </p>
             </div>
           </div>
 
-          {/* Close button for mobile drawer */}
           {onClose && (
             <button
               onClick={onClose}
@@ -95,32 +106,46 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* Status Pill */}
-        <div style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '4px 8px',
-          background: backendOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
-          border: `1px solid ${backendOnline ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`,
-          borderRadius: '999px',
-          fontSize: '0.72rem',
-          color: backendOnline ? '#10b981' : '#f43f5e',
-          marginTop: '6px'
-        }}>
-          <span style={{
-            width: '6px',
-            height: '6px',
-            borderRadius: '50%',
-            backgroundColor: backendOnline ? '#10b981' : '#f43f5e',
-            boxShadow: backendOnline ? '0 0 8px #10b981' : '0 0 8px #f43f5e'
-          }} />
-          {backendOnline ? 'ENGINE ONLINE' : 'DISCONNECTED'}
+        {/* Status Pill & User Role */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 8px',
+            background: backendOnline ? 'rgba(16, 185, 129, 0.1)' : 'rgba(244, 63, 94, 0.1)',
+            border: `1px solid ${backendOnline ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`,
+            borderRadius: '999px',
+            fontSize: '0.72rem',
+            color: backendOnline ? 'var(--accent-emerald)' : '#fb7185'
+          }}>
+            <span style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              backgroundColor: backendOnline ? '#10b981' : '#f43f5e',
+              boxShadow: backendOnline ? '0 0 8px #10b981' : '0 0 8px #f43f5e'
+            }} />
+            {backendOnline ? 'ENGINE ONLINE' : 'DISCONNECTED'}
+          </div>
+
+          <div style={{
+            padding: '2px 8px',
+            borderRadius: '999px',
+            backgroundColor: 'var(--bg-input)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-secondary)',
+            fontSize: '0.68rem',
+            textTransform: 'uppercase',
+            fontWeight: 700
+          }}>
+            {currentUser}
+          </div>
         </div>
       </div>
 
       {/* Nav Menu */}
-      <nav style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '6px', flex: 1 }}>
+      <nav style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '5px', flex: 1, overflowY: 'auto' }}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activePage === item.id;
@@ -135,19 +160,19 @@ export default function Sidebar({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                padding: '12px 14px',
+                padding: '10px 14px',
                 borderRadius: 'var(--radius-md)',
                 backgroundColor: isActive ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
                 color: isActive ? 'var(--accent-cyan)' : 'var(--text-secondary)',
                 border: isActive ? '1px solid rgba(6, 182, 212, 0.3)' : '1px solid transparent',
                 fontWeight: isActive ? 700 : 500,
-                fontSize: '0.9rem',
+                fontSize: '0.875rem',
                 cursor: 'pointer',
                 textAlign: 'left',
                 transition: 'all 0.15s ease'
               }}
             >
-              <Icon size={19} color={isActive ? 'var(--accent-cyan)' : 'currentColor'} />
+              <Icon size={18} color={isActive ? 'var(--accent-cyan)' : 'currentColor'} />
               <span>{item.label}</span>
             </button>
           );
@@ -214,31 +239,35 @@ export default function Sidebar({
         </div>
       )}
 
-      {/* Engine Telemetry Card */}
+      {/* Engine Telemetry Card (Task T0.4 & T0.5) */}
       <div style={{
-        padding: '16px',
+        padding: '14px',
         backgroundColor: 'var(--bg-input)',
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--border-subtle)',
-        fontSize: '0.75rem',
+        fontSize: '0.72rem',
         color: 'var(--text-muted)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>PIPELINE CORES</span>
-          <Activity size={14} color="var(--accent-cyan)" />
+          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>PIPELINE TELEMETRY</span>
+          <Activity size={13} color="var(--accent-cyan)" />
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontFamily: 'var(--font-mono)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', fontFamily: 'var(--font-mono)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Tracker:</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>YOLOv8 ByteTrack</span>
+            <span>Compute:</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{cudaText}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <span>Biometrics:</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>OpenCV Haar</span>
+            <span>Detector:</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{personModel}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>Facial DNN:</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{faceModel}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Fidelity:</span>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Laplacian Var</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Quality v2 (Laplacian)</span>
           </div>
         </div>
 
@@ -252,16 +281,16 @@ export default function Sidebar({
             gap: '6px',
             color: 'var(--accent-cyan)',
             textDecoration: 'none',
-            marginTop: '12px',
+            marginTop: '10px',
             paddingTop: '8px',
             borderTop: '1px solid var(--border-subtle)',
-            fontSize: '0.72rem',
+            fontSize: '0.7rem',
             fontWeight: 600
           }}
         >
-          <Terminal size={13} />
-          <span>REST API Docs</span>
-          <ExternalLink size={11} style={{ marginLeft: 'auto' }} />
+          <Terminal size={12} />
+          <span>Interactive API Docs</span>
+          <ExternalLink size={10} style={{ marginLeft: 'auto' }} />
         </a>
       </div>
     </aside>

@@ -37,6 +37,13 @@ backend/uploads/*
 !backend/uploads/.gitkeep
 backend/results/*
 !backend/results/.gitkeep
+backend/models/*
+!backend/models/.gitkeep
+backend/data/*
+!backend/data/.gitkeep
+*.mp4
+*.avi
+*.mov
 
 # Node & Frontend
 node_modules/

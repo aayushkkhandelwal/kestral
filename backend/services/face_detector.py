@@ -2,20 +2,24 @@ import os
 from typing import List, Dict, Any, Optional, Tuple
 import cv2
 import numpy as np
+import config
 
 class FaceDetector:
     """
-    High-accuracy facial recognition & orientation detector utilizing OpenCV YuNet DNN.
+    High-accuracy facial recognition & landmark detector utilizing OpenCV YuNet DNN and SFace.
     Accurately detects whether a real face (eyes, nose, mouth) is visible towards the camera,
     distinguishing true facial captures from back-of-head / turned-away views.
+    Includes SFace facial feature embedding generation for face search and identity indexing.
     """
-    def __init__(self, score_threshold: float = 0.55):
+    def __init__(self, score_threshold: float = config.YUNET_SCORE_THRESHOLD):
         self.score_threshold = score_threshold
         self.yunet = None
+        self.sface = None
+        self.face_model_loaded = False
+        self.face_recognizer_loaded = False
         
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        model_path = os.path.join(backend_dir, "models", "face_detection_yunet.onnx")
-        
+        # 1. Initialize YuNet Face Detector
+        model_path = config.FACE_MODEL_PATH
         if os.path.exists(model_path) and hasattr(cv2, 'FaceDetectorYN_create'):
             try:
                 self.yunet = cv2.FaceDetectorYN_create(
@@ -23,21 +27,74 @@ class FaceDetector:
                     "",
                     (320, 320),
                     score_threshold=self.score_threshold,
-                    nms_threshold=0.3
+                    nms_threshold=config.YUNET_NMS_THRESHOLD
                 )
+                self.face_model_loaded = True
+                print(f"[FaceDetector] Loaded YuNet face detector from {model_path}")
             except Exception as e:
-                print(f"[FaceDetector] Warning: YuNet init failed ({e})")
+                print(f"[FaceDetector] Error: YuNet initialization failed ({e})")
+                self.face_model_loaded = False
+        else:
+            if not os.path.exists(model_path):
+                print(f"[FaceDetector] ERROR: YuNet model not found at {model_path}. Run `python backend/scripts/download_models.py`")
+            self.face_model_loaded = False
+
+        # 2. Initialize SFace Feature Extractor for Face Search
+        sface_path = config.SFACE_MODEL_PATH
+        if os.path.exists(sface_path) and hasattr(cv2, 'FaceRecognizerSF_create'):
+            try:
+                self.sface = cv2.FaceRecognizerSF_create(sface_path, "")
+                self.face_recognizer_loaded = True
+                print(f"[FaceDetector] Loaded SFace recognizer from {sface_path}")
+            except Exception as e:
+                print(f"[FaceDetector] SFace recognizer initialization failed: {e}")
+                self.face_recognizer_loaded = False
+
+    def compute_embedding(self, frame: np.ndarray, face_data: np.ndarray) -> Optional[np.ndarray]:
+        """
+        Extracts a 128-dimensional L2-normalized feature embedding using SFace.
+        """
+        if self.sface is None or frame is None or face_data is None:
+            return None
+        try:
+            # SFace expects the raw full frame and the raw 15-element face detection vector
+            aligned_face = self.sface.alignCrop(frame, face_data)
+            feature = self.sface.feature(aligned_face)
+            norm = np.linalg.norm(feature)
+            if norm > 0:
+                feature = feature / norm
+            return feature.flatten()
+        except Exception as e:
+            # Fallback: compute embedding directly on face crop
+            try:
+                if len(face_data.shape) == 1 and face_data.shape[0] >= 4:
+                    fx, fy, fw, fh = [int(v) for v in face_data[:4]]
+                    h, w = frame.shape[:2]
+                    x1, y1 = max(0, fx), max(0, fy)
+                    x2, y2 = min(w, fx + fw), min(h, fy + fh)
+                    crop = frame[y1:y2, x1:x2]
+                    if crop.size > 0:
+                        resized = cv2.resize(crop, (112, 112))
+                        feat = self.sface.feature(resized)
+                        norm = np.linalg.norm(feat)
+                        return (feat / norm).flatten() if norm > 0 else feat.flatten()
+            except Exception:
+                pass
+            return None
 
     def detect_face_in_person(
         self, frame: np.ndarray, person_bbox: List[int]
     ) -> Optional[Dict[str, Any]]:
         """
         Locates the face within a person's upper body.
+        Applies upper-body upscaling for distant or low-resolution CCTV subjects.
         Returns:
             - 'bbox': [fx1, fy1, fx2, fy2]
             - 'face_crop': cropped image
-            - 'has_real_face': True if eyes/nose/mouth were verified by neural network
+            - 'has_real_face': True if facial features were verified by neural network
             - 'confidence': confidence score (0.0 to 1.0)
+            - 'landmarks': 5 facial landmarks in original frame coordinates
+            - 'embedding': 128-d feature vector or None
         """
         if frame is None or frame.size == 0:
             return None
@@ -50,11 +107,11 @@ class FaceDetector:
         p_width = px2 - px1
         p_height = py2 - py1
 
-        if p_width < 15 or p_height < 25:
+        if p_width < 12 or p_height < 20:
             return None
 
-        # Focus face search on upper 60% of person (head, face, neck)
-        head_region_h = int(p_height * 0.60)
+        # Focus face search on upper 55% of person (head, face, neck)
+        head_region_h = int(p_height * 0.55)
         crop_y2 = min(h, py1 + head_region_h)
         upper_crop = frame[py1:crop_y2, px1:px2]
 
@@ -64,37 +121,40 @@ class FaceDetector:
         uh, uw = upper_crop.shape[:2]
 
         # 1. Try Deep Face Detector (YuNet)
-        if self.yunet is not None and uw >= 20 and uh >= 20:
+        if self.yunet is not None and self.face_model_loaded and uw >= 15 and uh >= 15:
             try:
-                # Downsample large crops for rapid inference
-                max_dim = max(uw, uh)
-                scale = 320.0 / max_dim if max_dim > 320 else 1.0
-                if scale < 1.0:
-                    net_w = int(uw * scale)
-                    net_h = int(uh * scale)
-                    input_img = cv2.resize(upper_crop, (net_w, net_h))
+                # Upscale small crops to ensure YuNet detects distant/small ATM faces (T1.2)
+                upscale = 1.0
+                if max(uw, uh) < 140:
+                    upscale = 2.0
+                    input_img = cv2.resize(upper_crop, (int(uw * upscale), int(uh * upscale)), interpolation=cv2.INTER_LINEAR)
+                    net_w, net_h = int(uw * upscale), int(uh * upscale)
+                elif max(uw, uh) > 480:
+                    downscale = 360.0 / max(uw, uh)
+                    input_img = cv2.resize(upper_crop, (int(uw * downscale), int(uh * downscale)), interpolation=cv2.INTER_AREA)
+                    upscale = downscale
+                    net_w, net_h = int(uw * downscale), int(uh * downscale)
                 else:
-                    net_w, net_h = uw, uh
                     input_img = upper_crop
+                    net_w, net_h = uw, uh
 
                 self.yunet.setInputSize((net_w, net_h))
                 _, faces = self.yunet.detect(input_img)
 
                 if faces is not None and len(faces) > 0:
-                    # Select face with highest confidence
                     best_face = max(faces, key=lambda f: float(f[-1]))
                     conf = float(best_face[-1])
                     
                     if conf >= self.score_threshold:
-                        inv_scale = 1.0 / scale
+                        inv_scale = 1.0 / upscale
                         fx = int(best_face[0] * inv_scale)
                         fy = int(best_face[1] * inv_scale)
                         fw = int(best_face[2] * inv_scale)
                         fh = int(best_face[3] * inv_scale)
 
-                        # Add comfortable padding around face
-                        pad_x = int(fw * 0.20)
-                        pad_y = int(fh * 0.25)
+                        # Comfortable padding around face
+                        pad_x = int(fw * 0.18)
+                        pad_y = int(fh * 0.22)
 
                         abs_x1 = max(0, px1 + fx - pad_x)
                         abs_y1 = max(0, py1 + fy - pad_y)
@@ -103,21 +163,43 @@ class FaceDetector:
 
                         face_crop = frame[abs_y1:abs_y2, abs_x1:abs_x2]
                         if face_crop.size > 0:
+                            # Map landmarks back to original frame
+                            raw_landmarks = best_face[4:14].reshape(5, 2)
+                            abs_landmarks = []
+                            for pt in raw_landmarks:
+                                lx = int(max(0, min(w - 1, px1 + (pt[0] * inv_scale))))
+                                ly = int(max(0, min(h - 1, py1 + (pt[1] * inv_scale))))
+                                abs_landmarks.append([lx, ly])
+
+                            # Create full-frame face detection record for SFace
+                            full_face_vec = best_face.copy()
+                            full_face_vec[0] = px1 + fx
+                            full_face_vec[1] = py1 + fy
+                            full_face_vec[2] = fw
+                            full_face_vec[3] = fh
+                            for idx, pt in enumerate(abs_landmarks):
+                                full_face_vec[4 + idx * 2] = pt[0]
+                                full_face_vec[5 + idx * 2] = pt[1]
+
+                            embedding = self.compute_embedding(frame, full_face_vec)
+
                             return {
                                 "bbox": [abs_x1, abs_y1, abs_x2, abs_y2],
                                 "face_crop": face_crop,
                                 "has_real_face": True,
-                                "confidence": round(conf, 3)
+                                "confidence": round(conf, 3),
+                                "landmarks": abs_landmarks,
+                                "embedding": embedding.tolist() if embedding is not None else None
                             }
             except Exception as e:
-                pass
+                print(f"[FaceDetector] Error detecting face in person: {e}")
 
-        # 2. Fallback: If no real face is detected (e.g. facing away / back of head)
-        # Extract upper 30% center region as head context, but clearly flag has_real_face = False
+        # 2. Fallback: Upper head region context when facing away / back of head
+        # Clearly flagged with has_real_face = False
         head_top = py1
         head_bottom = min(h, py1 + int(p_height * 0.32))
         center_x = px1 + p_width // 2
-        half_head_w = int(p_width * 0.30)
+        half_head_w = int(p_width * 0.28)
         head_left = max(0, center_x - half_head_w)
         head_right = min(w, center_x + half_head_w)
 
@@ -127,130 +209,9 @@ class FaceDetector:
                 "bbox": [head_left, head_top, head_right, head_bottom],
                 "face_crop": head_crop,
                 "has_real_face": False,
-                "confidence": 0.0
+                "confidence": 0.0,
+                "landmarks": [],
+                "embedding": None
             }
 
         return None
-
-    def detect_faces(
-        self, frame: np.ndarray, score_threshold: Optional[float] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Detects all faces in the provided frame using deep learning face detection.
-        Extracts face bounding boxes, confidence scores, and 5 facial landmarks
-        (right eye, left eye, nose tip, right mouth corner, left mouth corner).
-        """
-        if frame is None or frame.size == 0 or self.yunet is None:
-            return []
-
-        h, w = frame.shape[:2]
-        thresh = score_threshold if score_threshold is not None else self.score_threshold
-
-        try:
-            self.yunet.setInputSize((w, h))
-            if hasattr(self.yunet, "setScoreThreshold"):
-                self.yunet.setScoreThreshold(thresh)
-            _, faces = self.yunet.detect(frame)
-
-            if faces is None or len(faces) == 0:
-                return []
-
-            results = []
-            for face in faces:
-                conf = float(face[-1])
-                if conf < thresh:
-                    continue
-
-                fx = int(face[0])
-                fy = int(face[1])
-                fw = int(face[2])
-                fh = int(face[3])
-
-                x1 = int(max(0, min(w - 1, fx)))
-                y1 = int(max(0, min(h - 1, fy)))
-                x2 = int(max(0, min(w, fx + fw)))
-                y2 = int(max(0, min(h, fy + fh)))
-
-                if x2 <= x1 or y2 <= y1:
-                    continue
-
-                # 5 facial landmarks: right eye, left eye, nose tip, right mouth, left mouth
-                landmarks_raw = face[4:14].reshape(5, 2)
-                landmarks = []
-                for pt in landmarks_raw:
-                    lx = int(max(0, min(w - 1, pt[0])))
-                    ly = int(max(0, min(h - 1, pt[1])))
-                    landmarks.append([lx, ly])
-
-                landmarks_named = {
-                    "right_eye": landmarks[0],
-                    "left_eye": landmarks[1],
-                    "nose": landmarks[2],
-                    "right_mouth": landmarks[3],
-                    "left_mouth": landmarks[4]
-                }
-
-                results.append({
-                    "bbox": [x1, y1, x2, y2],
-                    "width": x2 - x1,
-                    "height": y2 - y1,
-                    "confidence": round(conf, 3),
-                    "landmarks": landmarks,
-                    "landmarks_named": landmarks_named
-                })
-
-            return results
-        except Exception as e:
-            print(f"[FaceDetector] detect_faces error: {e}")
-            return []
-
-    @staticmethod
-    def associate_faces_with_people(
-        people: List[Dict[str, Any]], faces: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-        """
-        Spatially associates detected faces with tracked persons.
-        Matches a face to a person if the face center or substantial area falls
-        within the person bounding box.
-        """
-        for face in faces:
-            face["matched_track_id"] = None
-
-        for person in people:
-            px1, py1, px2, py2 = person["bbox"]
-            best_face = None
-            best_overlap = 0.0
-
-            for face in faces:
-                if face.get("matched_track_id") is not None:
-                    continue
-
-                fx1, fy1, fx2, fy2 = face["bbox"]
-                fcx = (fx1 + fx2) / 2.0
-                fcy = (fy1 + fy2) / 2.0
-
-                # Face center inside person bounding box
-                if px1 <= fcx <= px2 and py1 <= fcy <= py2:
-                    ix1 = max(px1, fx1)
-                    iy1 = max(py1, fy1)
-                    ix2 = min(px2, fx2)
-                    iy2 = min(py2, fy2)
-                    inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-                    f_area = max(1, (fx2 - fx1) * (fy2 - fy1))
-                    overlap = inter_area / f_area
-
-                    if overlap > best_overlap:
-                        best_overlap = overlap
-                        best_face = face
-
-            if best_face is not None and best_overlap >= 0.30:
-                best_face["matched_track_id"] = person["track_id"]
-                person["face_bbox"] = best_face["bbox"]
-                person["face_confidence"] = best_face["confidence"]
-                person["landmarks"] = best_face.get("landmarks", [])
-            else:
-                person["face_bbox"] = None
-                person["face_confidence"] = None
-                person["landmarks"] = []
-
-        return people, faces

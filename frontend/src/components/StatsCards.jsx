@@ -1,7 +1,11 @@
 import React from 'react';
-import { Users, Film, Award, Sparkles, TrendingUp } from 'lucide-react';
+import { Users, Film, Award, Sparkles } from 'lucide-react';
 
 export default function StatsCards({ stats }) {
+  const avgFidelity = stats?.system_average_fidelity != null
+    ? `${stats.system_average_fidelity}%`
+    : 'No Data';
+
   const cards = [
     {
       title: 'Videos Processed',
@@ -29,7 +33,7 @@ export default function StatsCards({ stats }) {
     },
     {
       title: 'Avg Evidence Quality',
-      value: `${stats?.system_average_fidelity ?? 0}%`,
+      value: avgFidelity,
       icon: Sparkles,
       color: 'var(--accent-amber)',
       glow: 'rgba(245, 158, 11, 0.2)',
@@ -105,7 +109,7 @@ export default function StatsCards({ stats }) {
               {card.title}
             </div>
 
-            {/* Subtle bottom decorative accent */}
+            {/* Bottom decorative accent */}
             <div style={{
               position: 'absolute',
               bottom: 0,
