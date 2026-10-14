@@ -20,15 +20,25 @@ from services.face_detector import FaceDetector
 
 # Paths setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+import sys
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 UPLOADS_DIR = os.path.join(BASE_DIR, "uploads")
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
+# Storage folders
+FACES_DIR = os.path.join(BASE_DIR, "faces")
+FRAMES_DIR = os.path.join(BASE_DIR, "frames")
+EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
+os.makedirs(FACES_DIR, exist_ok=True)
+os.makedirs(FRAMES_DIR, exist_ok=True)
+os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 app = FastAPI(
     title="Kestral Video Intelligence & Best-Frame Evidence API",
     description="Automated Person Tracking, Face Detection, and Biometric Evidence Extraction",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 # CORS Configuration
@@ -43,6 +53,52 @@ app.add_middleware(
 # Mount static directories for video playback and evidence frames
 app.mount("/results", StaticFiles(directory=RESULTS_DIR), name="results")
 app.mount("/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
+app.mount("/faces", StaticFiles(directory=FACES_DIR), name="faces")
+app.mount("/frames", StaticFiles(directory=FRAMES_DIR), name="frames")
+app.mount("/exports", StaticFiles(directory=EXPORTS_DIR), name="exports")
+
+# Include Clean Architecture Enterprise API V1 Router
+try:
+    from app.api.v1.router import api_router
+    app.include_router(api_router, prefix="/api/v1")
+except Exception as e:
+    print(f"[Warning] Failed to mount Enterprise API V1 router: {e}")
+
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from app.core.exceptions import (
+    DomainException,
+    EntityNotFoundException,
+    AuthenticationFailedException,
+    PermissionDeniedException,
+    DuplicateEntityException,
+    ValidationException,
+    BusinessRuleException
+)
+
+@app.exception_handler(EntityNotFoundException)
+async def not_found_handler(request: Request, exc: EntityNotFoundException):
+    return JSONResponse(status_code=404, content={"detail": exc.message, "error_code": "NOT_FOUND"})
+
+@app.exception_handler(AuthenticationFailedException)
+async def auth_failed_handler(request: Request, exc: AuthenticationFailedException):
+    return JSONResponse(status_code=401, content={"detail": exc.message, "error_code": "UNAUTHORIZED"})
+
+@app.exception_handler(PermissionDeniedException)
+async def forbidden_handler(request: Request, exc: PermissionDeniedException):
+    return JSONResponse(status_code=403, content={"detail": exc.message, "error_code": "FORBIDDEN"})
+
+@app.exception_handler(DuplicateEntityException)
+async def duplicate_handler(request: Request, exc: DuplicateEntityException):
+    return JSONResponse(status_code=409, content={"detail": exc.message, "error_code": "CONFLICT"})
+
+@app.exception_handler(ValidationException)
+async def validation_handler(request: Request, exc: ValidationException):
+    return JSONResponse(status_code=422, content={"detail": exc.message, "error_code": "VALIDATION_ERROR"})
+
+@app.exception_handler(BusinessRuleException)
+async def business_rule_handler(request: Request, exc: BusinessRuleException):
+    return JSONResponse(status_code=400, content={"detail": exc.message, "error_code": "BUSINESS_RULE_VIOLATION"})
 
 # Thread pool for CPU/GPU heavy vision tasks
 executor = ThreadPoolExecutor(max_workers=2)
@@ -70,6 +126,89 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
             "progress": 100.0,
             "result": results
         }
+
+        # Database persistence sync
+        try:
+            from app.database.session import SessionLocal
+            from app.models.video import Video
+            from app.models.person_track import PersonTrack
+            from app.models.face_evidence import FaceEvidence
+            from app.repositories.evidence_repository import EvidenceRepository
+            from app.utils.hashing import calculate_sha256
+            from datetime import timezone
+
+            with SessionLocal() as db:
+                meta = results.get("metadata", {})
+                vid = db.query(Video).filter(Video.filename.like(f"%{task_id}%")).first()
+                if not vid:
+                    rel_vid_path = os.path.relpath(video_path, BASE_DIR).replace("\\", "/")
+                    vid_hash = calculate_sha256(video_path) if os.path.exists(video_path) else None
+                    vid = Video(
+                        filename=os.path.basename(video_path),
+                        file_path=rel_vid_path,
+                        file_size_bytes=os.path.getsize(video_path) if os.path.exists(video_path) else 0,
+                        sha256=vid_hash
+                    )
+                    db.add(vid)
+                    db.flush()
+
+                vid.duration = float(meta.get("duration_seconds", 0.0))
+                vid.fps = float(meta.get("fps", 0.0))
+                vid.resolution = str(meta.get("resolution", "unknown"))
+                vid.processing_status = "completed"
+                vid.processed_at = datetime.now(timezone.utc)
+                db.flush()
+
+                ev_repo = EvidenceRepository(db)
+                for t_item in results.get("tracks", []):
+                    p_num = int(t_item.get("track_id", 0))
+                    track = db.query(PersonTrack).filter(
+                        PersonTrack.video_id == vid.video_id,
+                        PersonTrack.person_number == p_num
+                    ).first()
+                    if not track:
+                        track = PersonTrack(
+                            video_id=vid.video_id,
+                            person_number=p_num,
+                            start_frame=int(t_item.get("best_frame_idx", 0)),
+                            end_frame=int(t_item.get("best_frame_idx", 0)),
+                            total_frames=int(t_item.get("total_detections", 1))
+                        )
+                        db.add(track)
+                        db.flush()
+
+                    crop_url = str(t_item.get("crop_url", ""))
+                    frame_url = str(t_item.get("full_frame_url", ""))
+                    crop_abs = os.path.join(BASE_DIR, crop_url.lstrip("/"))
+                    frame_abs = os.path.join(BASE_DIR, frame_url.lstrip("/"))
+
+                    crop_hash = calculate_sha256(crop_abs) if os.path.exists(crop_abs) else None
+                    frame_hash = calculate_sha256(frame_abs) if os.path.exists(frame_abs) else None
+
+                    evidence = FaceEvidence(
+                        track_id=track.track_id,
+                        face_crop_path=crop_url,
+                        full_frame_path=frame_url,
+                        quality_score=float(t_item.get("quality_score", 0.0)),
+                        quality_grade=str(t_item.get("quality", {}).get("grade", "C")),
+                        sharpness=float(t_item.get("sharpness_score", 0.0)),
+                        brightness=float(t_item.get("exposure_score", 0.0)),
+                        contrast=0.5,
+                        resolution=f"{t_item.get('quality', {}).get('crop_width', 0)}x{t_item.get('quality', {}).get('crop_height', 0)}",
+                        face_confidence=float(t_item.get("face_confidence", 0.0)) if t_item.get("face_confidence") is not None else 0.0,
+                        sha256_crop=crop_hash,
+                        sha256_frame=frame_hash,
+                        is_best=False
+                    )
+                    db.add(evidence)
+                    db.flush()
+
+                    ev_repo.promote_candidate_if_best(evidence)
+
+                db.commit()
+                print(f"[DB Sync] Successfully persisted task {task_id} analysis to PostgreSQL.")
+        except Exception as db_exc:
+            print(f"[DB Sync Warning] Failed to persist task {task_id} results to DB: {db_exc}")
     except Exception as e:
         print(f"[Worker Error] Task {task_id} failed: {e}")
         TASKS[task_id] = {

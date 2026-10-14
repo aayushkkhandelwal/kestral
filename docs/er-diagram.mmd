@@ -1,0 +1,123 @@
+erDiagram
+    users {
+        UUID id PK
+        VARCHAR name
+        VARCHAR email UK
+        VARCHAR password_hash
+        VARCHAR role
+        BOOLEAN is_active
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    cameras {
+        UUID camera_id PK
+        VARCHAR camera_name
+        VARCHAR atm_id
+        VARCHAR location
+        VARCHAR ip_address
+        VARCHAR status
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    videos {
+        UUID video_id PK
+        UUID camera_id FK
+        VARCHAR filename
+        VARCHAR file_path
+        FLOAT duration
+        FLOAT fps
+        VARCHAR resolution
+        UUID uploaded_by FK
+        VARCHAR processing_status
+        BIGINT file_size_bytes
+        VARCHAR sha256
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+        TIMESTAMPTZ processed_at
+    }
+
+    person_tracks {
+        UUID track_id PK
+        UUID video_id FK
+        INT person_number
+        INT start_frame
+        INT end_frame
+        TIMESTAMPTZ first_seen
+        TIMESTAMPTZ last_seen
+        INT total_frames
+        UUID best_evidence_id
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    face_evidence {
+        UUID evidence_id PK
+        UUID track_id FK
+        VARCHAR face_crop_path
+        VARCHAR full_frame_path
+        FLOAT quality_score
+        VARCHAR quality_grade
+        FLOAT sharpness
+        FLOAT brightness
+        FLOAT contrast
+        VARCHAR resolution
+        FLOAT face_confidence
+        BOOLEAN is_best
+        VARCHAR sha256_crop
+        VARCHAR sha256_frame
+        TIMESTAMPTZ created_at
+    }
+
+    investigation_cases {
+        UUID case_id PK
+        VARCHAR title
+        TEXT description
+        VARCHAR status
+        UUID assigned_to FK
+        UUID created_by FK
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ updated_at
+    }
+
+    case_evidence {
+        UUID case_id PK, FK
+        UUID evidence_id PK, FK
+        UUID added_by FK
+        TIMESTAMPTZ created_at
+    }
+
+    alerts {
+        UUID alert_id PK
+        UUID camera_id FK
+        VARCHAR alert_type
+        VARCHAR severity
+        TEXT message
+        TIMESTAMPTZ timestamp
+        TIMESTAMPTZ created_at
+        TIMESTAMPTZ acknowledged_at
+        UUID acknowledged_by FK
+    }
+
+    audit_logs {
+        UUID log_id PK
+        UUID user_id FK
+        VARCHAR action
+        VARCHAR resource
+        VARCHAR request_id
+        JSONB details
+        TIMESTAMPTZ created_at
+    }
+
+    cameras ||--o{ videos : "records"
+    users ||--o{ videos : "uploads"
+    videos ||--o{ person_tracks : "contains"
+    person_tracks ||--o{ face_evidence : "yields"
+    users ||--o{ investigation_cases : "creates"
+    users ||--o{ investigation_cases : "assigned"
+    investigation_cases ||--o{ case_evidence : "maps"
+    face_evidence ||--o{ case_evidence : "included_in"
+    cameras ||--o{ alerts : "triggers"
+    users ||--o{ alerts : "acknowledges"
+    users ||--o{ audit_logs : "performed_by"

@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import {
   Camera,
-  ChevronsUpDown,
   FileText,
   FolderSearch,
   LayoutDashboard,
@@ -14,7 +13,6 @@ import {
   X,
 } from 'lucide-react'
 import { KestralLogo } from '@/components/kestral-logo'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -96,22 +94,6 @@ export function AppSidebar({ mobileOpen, onClose, activeView, onSelectView }: Ap
             })}
           </ul>
         </nav>
-
-        <div className="p-3">
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors hover:bg-sidebar-accent/60"
-          >
-            <Avatar className="size-9">
-              <AvatarFallback className="bg-primary/15 text-xs font-medium text-primary">SR</AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">Sarah Reyes</p>
-              <p className="truncate text-xs text-muted-foreground">Lead Investigator</p>
-            </div>
-            <ChevronsUpDown className="size-4 text-muted-foreground" aria-hidden="true" />
-          </button>
-        </div>
       </aside>
     </>
   )

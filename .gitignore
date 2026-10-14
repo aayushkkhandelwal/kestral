@@ -32,11 +32,21 @@ wheels/
 yolov8*.pt
 yolo11*.pt
 
-# Uploads & Results
+# Uploads, Results, Faces, Frames & Exports
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/results/*
 !backend/results/.gitkeep
+backend/faces/*
+!backend/faces/.gitkeep
+backend/frames/*
+!backend/frames/.gitkeep
+backend/exports/*
+!backend/exports/.gitkeep
+
+*.db
+*.sqlite
+*.sqlite3
 
 # Node & Frontend
 node_modules/

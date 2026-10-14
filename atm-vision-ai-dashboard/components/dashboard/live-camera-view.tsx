@@ -20,6 +20,10 @@ import {
   Info,
   CheckCircle2,
   Sliders,
+  X,
+  Eye,
+  Download,
+  User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -59,6 +63,39 @@ function formatDuration(seconds: number) {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+function extractCropDataUrl(
+  source: HTMLVideoElement | HTMLCanvasElement,
+  bbox: number[],
+  sourceWidth: number,
+  sourceHeight: number,
+  paddingRatio = 0.2
+): string {
+  try {
+    if (!source || !bbox || bbox.length < 4 || !sourceWidth || !sourceHeight) return ''
+    const [x1, y1, x2, y2] = bbox
+    const bw = Math.max(10, x2 - x1)
+    const bh = Math.max(10, y2 - y1)
+    const padX = Math.round(bw * paddingRatio)
+    const padY = Math.round(bh * paddingRatio)
+    const sx = Math.max(0, x1 - padX)
+    const sy = Math.max(0, y1 - padY)
+    const sw = Math.min(sourceWidth - sx, bw + padX * 2)
+    const sh = Math.min(sourceHeight - sy, bh + padY * 2)
+    if (sw <= 0 || sh <= 0) return ''
+
+    const c = document.createElement('canvas')
+    c.width = Math.max(48, Math.min(sw, 480))
+    c.height = Math.max(48, Math.min(sh, 480))
+    const ctx = c.getContext('2d')
+    if (!ctx) return ''
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.88)
+  } catch (err) {
+    console.warn('Crop extraction error:', err)
+    return ''
+  }
+}
+
 export type SecurityEvent = {
   id: string
   trackId: number | string
@@ -68,6 +105,12 @@ export type SecurityEvent = {
   confidence: number
   hasFace: boolean
   faceConfidence?: number
+  acknowledged?: boolean
+  acknowledgedAt?: string
+  snapshotUrl?: string
+  bbox?: number[]
+  faceBbox?: number[]
+  landmarks?: number[][]
 }
 
 export function LiveCameraView() {
@@ -82,6 +125,38 @@ export function LiveCameraView() {
   const [activeTracksList, setActiveTracksList] = useState<any[]>([])
   const [bannerAlert, setBannerAlert] = useState<SecurityEvent | null>(null)
   const [detectionHistory, setDetectionHistory] = useState<SecurityEvent[]>([])
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+  const [selectedPersonModal, setSelectedPersonModal] = useState<SecurityEvent | null>(null)
+
+  const handleAcknowledge = useCallback((eventObj: SecurityEvent) => {
+    const ackTime = new Date().toLocaleTimeString()
+
+    let snap = eventObj.snapshotUrl
+    if (!snap) {
+      const regItem = trackerRegistryRef.current.get(eventObj.trackId)
+      if (regItem?.snapshotUrl) {
+        snap = regItem.snapshotUrl
+      } else if (videoRef.current && (regItem?.faceBbox || regItem?.bbox)) {
+        const box = regItem.faceBbox || regItem.bbox
+        snap = extractCropDataUrl(videoRef.current, box, videoRef.current.videoWidth || 1280, videoRef.current.videoHeight || 720)
+      }
+    }
+
+    const updated: SecurityEvent = {
+      ...eventObj,
+      snapshotUrl: snap || eventObj.snapshotUrl,
+      acknowledged: true,
+      acknowledgedAt: ackTime,
+    }
+    setBannerAlert(updated)
+    setDetectionHistory((prev) =>
+      prev.map((item) => (item.id === eventObj.id ? updated : item))
+    )
+    setToastMessage(`Incident for Subject #${eventObj.trackId} successfully acknowledged at ${ackTime}`)
+    setTimeout(() => {
+      setToastMessage((cur) => (cur?.includes(`Subject #${eventObj.trackId}`) ? null : cur))
+    }, 4500)
+  }, [])
 
   // Performance Telemetry
   const [latencyMs, setLatencyMs] = useState(0)
@@ -330,6 +405,11 @@ export function LiveCameraView() {
             const tid = person.track_id
             currentSeenIds.add(tid)
 
+            const cropBox = person.face_bbox || person.bbox
+            const cropSnapshot = (videoRef.current && cropBox)
+              ? extractCropDataUrl(videoRef.current, cropBox, vw, vh, person.face_bbox ? 0.3 : 0.1)
+              : ''
+
             const existing = trackerRegistryRef.current.get(tid)
             if (!existing) {
               trackerRegistryRef.current.set(tid, {
@@ -344,6 +424,7 @@ export function LiveCameraView() {
                 faceBbox: person.face_bbox,
                 faceConfidence: person.face_confidence,
                 landmarks: person.landmarks || [],
+                snapshotUrl: cropSnapshot,
               })
             } else {
               const gap = nowSec - existing.lastSeenTime
@@ -356,6 +437,9 @@ export function LiveCameraView() {
                 existing.faceConfidence = person.face_confidence
                 existing.landmarks = person.landmarks || []
                 existing.continuousSeconds = nowSec - existing.firstSeenTime
+                if (cropSnapshot) {
+                  existing.snapshotUrl = cropSnapshot
+                }
 
                 if (existing.continuousSeconds >= 15.0 && !existing.alertTriggered) {
                   existing.alertTriggered = true
@@ -369,6 +453,10 @@ export function LiveCameraView() {
                     confidence: person.confidence,
                     hasFace: Boolean(person.face_bbox),
                     faceConfidence: person.face_confidence,
+                    snapshotUrl: cropSnapshot || existing.snapshotUrl,
+                    bbox: person.bbox,
+                    faceBbox: person.face_bbox,
+                    landmarks: person.landmarks || [],
                   }
 
                   setDetectionHistory((prev) => [eventObj, ...prev.slice(0, 49)])
@@ -386,6 +474,9 @@ export function LiveCameraView() {
                 existing.status = 'active'
                 existing.bbox = person.bbox
                 existing.faceBbox = person.face_bbox
+                if (cropSnapshot) {
+                  existing.snapshotUrl = cropSnapshot
+                }
               }
             }
           })
@@ -835,32 +926,214 @@ export function LiveCameraView() {
         </div>
       </div>
 
-      {/* 4. 15-SECOND CRITICAL PERSISTENCE BANNER */}
-      {bannerAlert && (
-        <div className="relative flex items-center justify-between overflow-hidden rounded-2xl border border-rose-500/50 bg-rose-500/15 p-5 shadow-lg">
-          <div className="flex items-center gap-3.5">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white animate-pulse">
-              <AlertTriangle className="size-5" />
+      {/* 4. 15-SECOND CRITICAL PERSISTENCE BANNER WITH PERSON DETAILS */}
+      {bannerAlert && (() => {
+        const activeItem = trackerRegistryRef.current.get(bannerAlert.trackId)
+        const currentSnapshot = bannerAlert.snapshotUrl || activeItem?.snapshotUrl
+
+        return (
+          <div
+            className={cn(
+              'relative overflow-hidden rounded-2xl border p-5 shadow-lg transition-all',
+              bannerAlert.acknowledged
+                ? 'border-emerald-500/40 bg-emerald-500/15'
+                : 'border-rose-500/50 bg-rose-500/15'
+            )}
+          >
+            {/* Top Bar: Alert Heading & Actions */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-border/30 pb-4">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={cn(
+                    'flex size-10 shrink-0 items-center justify-center rounded-xl text-white',
+                    bannerAlert.acknowledged
+                      ? 'bg-emerald-600 shadow-sm'
+                      : 'bg-rose-600 animate-pulse'
+                  )}
+                >
+                  {bannerAlert.acknowledged ? (
+                    <CheckCircle2 className="size-5" />
+                  ) : (
+                    <AlertTriangle className="size-5" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h4
+                      className={cn(
+                        'text-sm font-bold sm:text-base',
+                        bannerAlert.acknowledged
+                          ? 'text-emerald-950 dark:text-emerald-200'
+                          : 'text-rose-950 dark:text-rose-100'
+                      )}
+                    >
+                      {bannerAlert.acknowledged
+                        ? `PERSISTENCE EVENT ACKNOWLEDGED: Subject #${bannerAlert.trackId}`
+                        : `CRITICAL PERSISTENCE TRIGGER: Subject #${bannerAlert.trackId}`}
+                    </h4>
+                    {bannerAlert.acknowledged ? (
+                      <Badge
+                        variant="outline"
+                        className="border-emerald-600/40 bg-emerald-500/20 text-emerald-900 dark:text-emerald-200 font-mono text-[11px] font-semibold"
+                      >
+                        ✓ Acknowledged at {bannerAlert.acknowledgedAt}
+                      </Badge>
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="border-rose-600/40 bg-rose-500/20 text-rose-900 dark:text-rose-200 font-mono text-[11px] font-semibold"
+                      >
+                        Stationary Dwell Limit Exceeded
+                      </Badge>
+                    )}
+                  </div>
+                  <p
+                    className={cn(
+                      'text-xs mt-0.5',
+                      bannerAlert.acknowledged
+                        ? 'text-emerald-900/90 dark:text-emerald-300/80'
+                        : 'text-rose-900/90 dark:text-rose-200/90'
+                    )}
+                  >
+                    Subject has remained continuously stationary in ATM / camera field of view for{' '}
+                    <strong>{bannerAlert.durationSec} seconds</strong> (Triggered at {bannerAlert.alertTime}).
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end sm:self-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedPersonModal({ ...bannerAlert, snapshotUrl: currentSnapshot })}
+                  className="bg-background/80 text-xs font-semibold hover:bg-muted shadow-sm gap-1.5"
+                >
+                  <Eye className="size-3.5 text-primary" />
+                  View Person Dossier
+                </Button>
+                {!bannerAlert.acknowledged ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleAcknowledge({ ...bannerAlert, snapshotUrl: currentSnapshot })}
+                    className="border-rose-500/60 bg-background/90 text-xs font-semibold text-rose-800 hover:bg-rose-500/20 dark:text-rose-100 shadow-sm"
+                  >
+                    <CheckCircle2 className="mr-1.5 size-3.5 text-rose-600" />
+                    Acknowledge
+                  </Button>
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setBannerAlert(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Dismiss
+                  </Button>
+                )}
+              </div>
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-rose-300 sm:text-base">
-                CRITICAL PERSISTENCE TRIGGER: Subject #{bannerAlert.trackId}
-              </h4>
-              <p className="text-xs text-rose-200/80">
-                Subject has remained continuously stationary in ATM / camera field of view for{' '}
-                <strong>{bannerAlert.durationSec} seconds</strong> (Triggered at {bannerAlert.alertTime}).
-              </p>
+
+            {/* Embedded Person Details Card */}
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 rounded-xl border border-border/50 bg-background/70 p-3.5 backdrop-blur-sm">
+              {/* Person Snapshot Thumbnail */}
+              <div className="flex flex-col items-center justify-center">
+                {currentSnapshot ? (
+                  <div
+                    className="group relative size-20 overflow-hidden rounded-xl border-2 border-primary/50 bg-black cursor-pointer hover:border-primary transition-all shadow-md"
+                    onClick={() => setSelectedPersonModal({ ...bannerAlert, snapshotUrl: currentSnapshot })}
+                    title="Click to expand full person dossier"
+                  >
+                    <img
+                      src={currentSnapshot}
+                      alt={`Subject #${bannerAlert.trackId} live capture`}
+                      className="size-full object-cover transition-transform group-hover:scale-105"
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-black/75 py-0.5 text-center font-mono text-[9px] text-white">
+                      {bannerAlert.hasFace ? 'FACE CROP' : 'BODY CROP'}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="flex size-20 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/40 p-2 text-center text-muted-foreground cursor-pointer hover:bg-muted/60"
+                    onClick={() => setSelectedPersonModal(bannerAlert)}
+                  >
+                    <User className="size-6 mb-1 text-primary/70" />
+                    <span className="font-mono text-[9px]">ID #{bannerAlert.trackId}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Person Telemetry Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                <div className="flex flex-col gap-0.5 rounded-lg border bg-card/60 p-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Subject Track</span>
+                  <span className="font-mono font-bold text-foreground">Subject #{bannerAlert.trackId}</span>
+                  <span className="text-[10px] text-muted-foreground">YOLOv8 ByteTrack ID</span>
+                </div>
+
+                <div className="flex flex-col gap-0.5 rounded-lg border bg-card/60 p-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Biometric Status</span>
+                  <span className="font-bold text-foreground flex items-center gap-1">
+                    {bannerAlert.hasFace ? (
+                      <>
+                        <CheckCircle2 className="size-3 text-emerald-500" />
+                        Face Verified ({Math.round((bannerAlert.faceConfidence || 0) * 100)}%)
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="size-3 text-amber-500" />
+                        Silhouette / Body
+                      </>
+                    )}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {bannerAlert.hasFace ? 'YuNet 5-pt Landmarks' : 'Face Occluded / Profile'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col gap-0.5 rounded-lg border bg-card/60 p-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Continuous Dwell</span>
+                  <span className="font-mono font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                    <Clock className="size-3" />
+                    {bannerAlert.durationSec}s Stationary
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">Alert Limit: 15.0s</span>
+                </div>
+
+                <div className="flex flex-col gap-0.5 rounded-lg border bg-card/60 p-2.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Detection Conf.</span>
+                  <span className="font-mono font-bold text-foreground">
+                    {Math.round(bannerAlert.confidence * 100)}% Confidence
+                  </span>
+                  <span className="text-[10px] text-muted-foreground truncate">
+                    First seen: {bannerAlert.startTime}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
+        )
+      })()}
 
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setBannerAlert(null)}
-            className="border-rose-500/40 text-xs hover:bg-rose-500/20"
+      {/* Floating Confirmation Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-card/95 p-4 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow">
+            <CheckCircle2 className="size-5" />
+          </div>
+          <div className="text-xs pr-2">
+            <p className="font-bold text-foreground">Alert Acknowledged</p>
+            <p className="text-muted-foreground">{toastMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Close notification"
           >
-            Acknowledge
-          </Button>
+            <X className="size-4" />
+          </button>
         </div>
       )}
 
@@ -1053,14 +1326,36 @@ export function LiveCameraView() {
                 {detectionHistory.map((evt) => (
                   <div
                     key={evt.id}
-                    className="flex flex-col gap-1 rounded-xl border border-border bg-muted/20 p-2.5 font-mono text-xs"
+                    className="flex flex-col gap-1.5 rounded-xl border border-border bg-muted/20 p-2.5 font-mono text-xs"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="flex items-center gap-1 font-bold text-rose-400">
-                        <AlertTriangle className="size-3" />
-                        TRACK #{evt.trackId}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">{evt.alertTime}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1 font-bold text-rose-500">
+                          <AlertTriangle className="size-3" />
+                          TRACK #{evt.trackId}
+                        </span>
+                        {evt.acknowledged ? (
+                          <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                            ✓ ACKNOWLEDGED ({evt.acknowledgedAt})
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
+                            PENDING ACK
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">{evt.alertTime}</span>
+                        {!evt.acknowledged && (
+                          <button
+                            type="button"
+                            onClick={() => handleAcknowledge(evt)}
+                            className="rounded px-1.5 py-0.5 text-[10px] font-bold text-rose-600 hover:bg-rose-500/15 border border-rose-500/30 transition-colors"
+                          >
+                            Ack
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between text-[11px] text-muted-foreground">
                       <span>Dwell: {evt.durationSec}s</span>
@@ -1076,6 +1371,166 @@ export function LiveCameraView() {
           </div>
         </div>
       </div>
+      {/* Forensic Subject Dossier Modal */}
+      {selectedPersonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border bg-card p-6 shadow-2xl">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between border-b pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <User className="size-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-foreground">
+                    Forensic Subject Dossier · Track #{selectedPersonModal.trackId}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    ATM Live Surveillance Camera · Alert Triggered at {selectedPersonModal.alertTime}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedPersonModal(null)}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label="Close dossier"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-[1.2fr_1.5fr] gap-6">
+              {/* Left Column: Evidence Snapshot */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Extracted Visual Crop
+                </span>
+                <div className="relative aspect-square w-full overflow-hidden rounded-xl border bg-black shadow-inner flex items-center justify-center">
+                  {selectedPersonModal.snapshotUrl ? (
+                    <img
+                      src={selectedPersonModal.snapshotUrl}
+                      alt={`Subject #${selectedPersonModal.trackId}`}
+                      className="size-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
+                      <User className="size-12 mb-2 text-muted-foreground/60" />
+                      <p className="text-xs">Live feed crop is rendering</p>
+                    </div>
+                  )}
+                  {selectedPersonModal.hasFace && (
+                    <div className="absolute top-2.5 right-2.5 rounded-md bg-black/80 px-2 py-0.5 font-mono text-[10px] text-emerald-400 backdrop-blur-md">
+                      YUNET 5-PT VERIFIED
+                    </div>
+                  )}
+                </div>
+
+                {selectedPersonModal.snapshotUrl && (
+                  <a
+                    href={selectedPersonModal.snapshotUrl}
+                    download={`subject_${selectedPersonModal.trackId}_evidence.jpg`}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-xs font-medium hover:bg-muted/60 transition-colors"
+                  >
+                    <Download className="size-3.5" />
+                    Download Evidence Crop
+                  </a>
+                )}
+              </div>
+
+              {/* Right Column: Full Telemetry Breakdown */}
+              <div className="flex flex-col gap-3">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Telemetry & Security Assessment
+                </span>
+                <div className="flex flex-col divide-y rounded-xl border bg-muted/20 px-3.5 py-1 text-xs">
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Subject ID</span>
+                    <span className="font-mono font-bold text-foreground">Track #{selectedPersonModal.trackId}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Stationary Duration</span>
+                    <span className="font-mono font-bold text-rose-500">
+                      {selectedPersonModal.durationSec}s Continuous Dwell
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Detection Confidence</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {Math.round(selectedPersonModal.confidence * 100)}%
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Biometric Facial Match</span>
+                    <span className="font-bold text-foreground flex items-center gap-1">
+                      {selectedPersonModal.hasFace ? (
+                        <span className="text-emerald-500">
+                          Confirmed ({Math.round((selectedPersonModal.faceConfidence || 0) * 100)}%)
+                        </span>
+                      ) : (
+                        <span className="text-amber-500">Not detected / Occluded</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">First Appearance</span>
+                    <span className="font-mono text-muted-foreground">{selectedPersonModal.startTime}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Alert Trigger Time</span>
+                    <span className="font-mono text-muted-foreground">{selectedPersonModal.alertTime}</span>
+                  </div>
+                  <div className="flex justify-between py-2">
+                    <span className="text-muted-foreground">Security Status</span>
+                    <span className="font-bold text-foreground">
+                      {selectedPersonModal.acknowledged ? (
+                        <span className="text-emerald-500">
+                          ✓ Acknowledged ({selectedPersonModal.acknowledgedAt})
+                        </span>
+                      ) : (
+                        <span className="text-rose-500">Pending Officer Acknowledgment</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-3 text-[11px] text-rose-800 dark:text-rose-200">
+                  <p className="font-semibold mb-0.5">Automated Risk Advisory:</p>
+                  <p className="text-muted-foreground">
+                    Subject exceeded 15 seconds continuous stationary presence in the ATM transaction field. Recommend verifying ATM slot and surrounding area for potential tampering or loitering.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="mt-6 flex items-center justify-end gap-2 border-t pt-4">
+              {!selectedPersonModal.acknowledged && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    handleAcknowledge(selectedPersonModal)
+                    setSelectedPersonModal((prev) => (prev ? { ...prev, acknowledged: true, acknowledgedAt: new Date().toLocaleTimeString() } : null))
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1.5"
+                >
+                  <CheckCircle2 className="size-3.5" />
+                  Acknowledge Incident
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedPersonModal(null)}
+                className="text-xs"
+              >
+                Close Dossier
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

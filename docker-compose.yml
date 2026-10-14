@@ -1,0 +1,72 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kestral-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-kestral_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - kestral_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-kestral_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: kestral-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-kestral_db}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-kestral-super-secret-jwt-key-2026-production-ready-32bytes}
+      JWT_ALGORITHM: HS256
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+    volumes:
+      - kestral_uploads:/app/uploads
+      - kestral_results:/app/results
+      - kestral_faces:/app/faces
+      - kestral_frames:/app/frames
+      - kestral_exports:/app/exports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./atm-vision-ai-dashboard
+      dockerfile: Dockerfile
+    container_name: kestral-frontend
+    restart: always
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+
+volumes:
+  kestral_pgdata:
+  kestral_uploads:
+  kestral_results:
+  kestral_faces:
+  kestral_frames:
+  kestral_exports:

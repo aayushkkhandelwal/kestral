@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    actor Officer as Operator / Officer
+    participant API as FastAPI Gateway
+    participant Storage as StorageManager
+    participant DB as PostgreSQL Database
+    participant Worker as ThreadPool Vision Worker
+    participant YOLO as YOLOv8 Tracking Engine
+    participant YuNet as YuNet Face Detector
+    participant Quality as Quality Scoring Engine
+
+    Officer->>API: POST /api/upload-and-process (multipart/form-data)
+    API->>Storage: Stream chunked write to disk (enforce MAX_SIZE)
+    API->>Storage: Compute SHA-256 hash of raw video
+    API->>DB: INSERT INTO videos (status='queued', sha256=...)
+    API-->>Officer: 202 Accepted {task_id, status: 'processing'}
+
+    API->>Worker: Dispatch background video task
+    Worker->>DB: UPDATE videos SET processing_status='processing'
+
+    loop For each frame in video
+        Worker->>YOLO: Detect and track person bounding boxes (ByteTrack)
+        Worker->>YuNet: Detect faces within person bounding boxes
+        Worker->>Quality: Compute Laplacian sharpness, exposure, contrast
+        Quality-->>Worker: Quality score & grade (HIGH/MEDIUM/LOW/POOR)
+    end
+
+    Worker->>DB: INSERT INTO person_tracks (start_frame, end_frame, ...)
+    Worker->>DB: INSERT INTO face_evidence (quality_score, crop_hash, ...)
+    Worker->>DB: SELECT FOR UPDATE track row & atomically promote best-evidence
+    Worker->>DB: UPDATE videos SET processing_status='completed', duration=..., fps=...
+
+    loop Polling interval
+        Officer->>API: GET /api/tasks/{task_id}/status
+        API-->>Officer: {status: 'completed', progress: 100.0, results: ...}
+    end
+
+    Officer->>API: GET /api/v1/evidence/best
+    API->>DB: SELECT * FROM face_evidence WHERE is_best=true
+    DB-->>API: Best face evidence list
+    API-->>Officer: 200 OK [Best forensic candidates]

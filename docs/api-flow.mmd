@@ -1,0 +1,53 @@
+flowchart TD
+    Client([Client / Frontend Dashboard])
+
+    subgraph Authentication & Security
+        Login["POST /api/v1/auth/login"]
+        JWTVerify{"Verify JWT Token & RBAC"}
+        Audit["Append to audit_logs"]
+    end
+
+    subgraph Video Surveillance Workflow
+        Upload["POST /api/upload-and-process or /api/v1/upload-video"]
+        HashCalc["Calculate Video SHA-256"]
+        StageDB["Persist Video (Status: QUEUED)"]
+        BackgroundQueue["Async Background Processing"]
+        PollStatus["GET /api/tasks/{task_id}/status"]
+    end
+
+    subgraph AI Vision Extraction
+        YOLO["YOLOv8 ByteTrack (Multi-Object Person Tracking)"]
+        YuNet["OpenCV YuNet DNN (Facial Landmark Detection)"]
+        Score["Laplacian Quality Scoring & Grade Assessment"]
+        Promote["Atomic Best-Evidence Promotion (Row Locking)"]
+        PersistDB["Persist Tracks & Face Evidence to PostgreSQL"]
+    end
+
+    subgraph Forensic Case Management
+        CreateCase["POST /api/v1/cases"]
+        AssignEvidence["POST /api/v1/cases/{id}/assign-evidence"]
+        VerifyHash["POST /api/v1/evidence/{id}/verify"]
+        ExportDossier["POST /api/v1/cases/{id}/export"]
+        DownloadZip["Download ZIP (Dossier + JSON + HTML)"]
+    end
+
+    Client --> Login
+    Login --> JWTVerify
+    Client --> Upload
+    Upload --> HashCalc
+    HashCalc --> StageDB
+    StageDB --> BackgroundQueue
+    BackgroundQueue --> YOLO
+    YOLO --> YuNet
+    YuNet --> Score
+    Score --> Promote
+    Promote --> PersistDB
+    Client -.-> PollStatus
+    PersistDB --> PollStatus
+
+    Client --> CreateCase
+    CreateCase --> AssignEvidence
+    Client --> VerifyHash
+    Client --> ExportDossier
+    ExportDossier --> DownloadZip
+    DownloadZip --> Audit

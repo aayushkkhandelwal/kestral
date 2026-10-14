@@ -1,0 +1,116 @@
+classDiagram
+    class User {
+        +UUID id
+        +String name
+        +String email
+        +String password_hash
+        +UserRole role
+        +Boolean is_active
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class Camera {
+        +UUID camera_id
+        +String camera_name
+        +String atm_id
+        +String location
+        +String ip_address
+        +String status
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class Video {
+        +UUID video_id
+        +UUID camera_id
+        +String filename
+        +String file_path
+        +Float duration
+        +Float fps
+        +String resolution
+        +UUID uploaded_by
+        +String processing_status
+        +BigInteger file_size_bytes
+        +String sha256
+        +DateTime created_at
+        +DateTime processed_at
+    }
+
+    class PersonTrack {
+        +UUID track_id
+        +UUID video_id
+        +Integer person_number
+        +Integer start_frame
+        +Integer end_frame
+        +Integer total_frames
+        +UUID best_evidence_id
+        +DateTime created_at
+    }
+
+    class FaceEvidence {
+        +UUID evidence_id
+        +UUID track_id
+        +String face_crop_path
+        +String full_frame_path
+        +Float quality_score
+        +String quality_grade
+        +Float sharpness
+        +Float brightness
+        +Float contrast
+        +Boolean is_best
+        +String sha256_crop
+        +String sha256_frame
+        +DateTime created_at
+    }
+
+    class InvestigationCase {
+        +UUID case_id
+        +String title
+        +String description
+        +String status
+        +UUID assigned_to
+        +UUID created_by
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    class CaseEvidence {
+        +UUID case_id
+        +UUID evidence_id
+        +UUID added_by
+        +DateTime created_at
+    }
+
+    class Alert {
+        +UUID alert_id
+        +UUID camera_id
+        +String alert_type
+        +String severity
+        +String message
+        +DateTime timestamp
+        +DateTime acknowledged_at
+        +UUID acknowledged_by
+    }
+
+    class AuditLog {
+        +UUID log_id
+        +UUID user_id
+        +String action
+        +String resource
+        +String request_id
+        +JSON details
+        +DateTime created_at
+    }
+
+    Camera "1" --> "*" Video : records
+    User "1" --> "*" Video : uploads
+    Video "1" --> "*" PersonTrack : tracks
+    PersonTrack "1" --> "*" FaceEvidence : produces
+    User "1" --> "*" InvestigationCase : assigned_investigator
+    User "1" --> "*" InvestigationCase : creator
+    InvestigationCase "1" --> "*" CaseEvidence : has
+    FaceEvidence "1" --> "*" CaseEvidence : associated_with
+    Camera "1" --> "*" Alert : generates
+    User "1" --> "*" Alert : acknowledges
+    User "1" --> "*" AuditLog : logs
