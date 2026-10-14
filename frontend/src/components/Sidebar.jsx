@@ -8,6 +8,8 @@ import {
   Activity, 
   Terminal,
   ExternalLink,
+  Sun,
+  Moon,
   X 
 } from 'lucide-react';
 import { API_BASE_URL } from '../config';
@@ -17,7 +19,9 @@ export default function Sidebar({
   setActivePage, 
   backendOnline = true,
   isOpen = false,
-  onClose
+  onClose,
+  theme = 'dark',
+  toggleTheme
 }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -39,7 +43,8 @@ export default function Sidebar({
         height: '100vh',
         position: 'sticky',
         top: 0,
-        flexShrink: 0
+        flexShrink: 0,
+        transition: 'background-color 0.25s ease, border-color 0.25s ease'
       }}
     >
       {/* Brand Header */}
@@ -59,7 +64,7 @@ export default function Sidebar({
               <Cpu size={22} color="#ffffff" />
             </div>
             <div>
-              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff' }}>
+              <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
                 KESTRAL
               </h1>
               <p style={{ fontSize: '0.68rem', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.08em' }}>
@@ -73,7 +78,7 @@ export default function Sidebar({
             <button
               onClick={onClose}
               style={{
-                background: 'rgba(255, 255, 255, 0.05)',
+                background: 'var(--bg-input)',
                 border: '1px solid var(--border-subtle)',
                 color: 'var(--text-secondary)',
                 borderRadius: '8px',
@@ -100,7 +105,7 @@ export default function Sidebar({
           border: `1px solid ${backendOnline ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)'}`,
           borderRadius: '999px',
           fontSize: '0.72rem',
-          color: backendOnline ? '#34d399' : '#fb7185',
+          color: backendOnline ? '#10b981' : '#f43f5e',
           marginTop: '6px'
         }}>
           <span style={{
@@ -149,10 +154,70 @@ export default function Sidebar({
         })}
       </nav>
 
+      {/* Theme Toggle Button */}
+      {toggleTheme && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '10px 14px',
+          backgroundColor: 'var(--bg-input)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-subtle)',
+          marginBottom: '14px',
+          cursor: 'pointer',
+          userSelect: 'none',
+          transition: 'all 0.2s ease'
+        }}
+        onClick={toggleTheme}
+        title={`Toggle to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {theme === 'dark' ? (
+              <Moon size={16} color="var(--accent-cyan)" />
+            ) : (
+              <Sun size={16} color="var(--accent-amber)" />
+            )}
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+              {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+            </span>
+          </div>
+
+          <div style={{
+            width: '38px',
+            height: '22px',
+            borderRadius: '999px',
+            backgroundColor: theme === 'light' ? 'var(--accent-cyan)' : 'rgba(255, 255, 255, 0.15)',
+            padding: '2px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: theme === 'light' ? 'flex-end' : 'flex-start',
+            transition: 'all 0.2s ease'
+          }}>
+            <div style={{
+              width: '18px',
+              height: '18px',
+              borderRadius: '50%',
+              backgroundColor: '#ffffff',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              {theme === 'light' ? (
+                <Sun size={11} color="#0891b2" />
+              ) : (
+                <Moon size={11} color="#0f172a" />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Engine Telemetry Card */}
       <div style={{
         padding: '16px',
-        backgroundColor: 'rgba(0, 0, 0, 0.25)',
+        backgroundColor: 'var(--bg-input)',
         borderRadius: 'var(--radius-md)',
         border: '1px solid var(--border-subtle)',
         fontSize: '0.75rem',
@@ -165,15 +230,15 @@ export default function Sidebar({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontFamily: 'var(--font-mono)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Tracker:</span>
-            <span style={{ color: '#fff' }}>YOLOv8 ByteTrack</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>YOLOv8 ByteTrack</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Biometrics:</span>
-            <span style={{ color: '#fff' }}>OpenCV Haar</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>OpenCV Haar</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Fidelity:</span>
-            <span style={{ color: '#fff' }}>Laplacian Var</span>
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Laplacian Var</span>
           </div>
         </div>
 

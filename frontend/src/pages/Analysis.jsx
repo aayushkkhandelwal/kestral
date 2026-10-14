@@ -63,7 +63,7 @@ export default function Analysis({ onRefreshStats }) {
     <div>
       {/* Page Header */}
       <div style={{ marginBottom: '28px' }}>
-        <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.03em' }}>
+        <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
           Surveillance Stream Processing
         </h1>
         <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
@@ -81,7 +81,7 @@ export default function Analysis({ onRefreshStats }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Loader2 size={22} color="var(--accent-cyan)" className="pulse-indicator" />
               <div>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Processing Video Stream (Task #{activeTaskId})
                 </h3>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
@@ -98,7 +98,7 @@ export default function Analysis({ onRefreshStats }) {
           {/* Progress Bar */}
           <div style={{
             height: '8px',
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            backgroundColor: 'var(--border-subtle)',
             borderRadius: '999px',
             overflow: 'hidden',
             marginBottom: '14px'
@@ -140,7 +140,7 @@ export default function Analysis({ onRefreshStats }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <AlertCircle size={24} color="#f43f5e" />
             <div>
-              <h4 style={{ color: '#fff', fontSize: '1rem', fontWeight: 700 }}>Processing Error</h4>
+              <h4 style={{ color: 'var(--text-primary)', fontSize: '1rem', fontWeight: 700 }}>Processing Error</h4>
               <p style={{ color: '#fb7185', fontSize: '0.825rem' }}>
                 {taskStatus.error || 'Video could not be processed. Please try again with another video sequence.'}
               </p>
@@ -166,13 +166,13 @@ export default function Analysis({ onRefreshStats }) {
           marginTop: '24px',
           marginBottom: '28px',
           border: '1px solid rgba(16, 185, 129, 0.35)',
-          background: 'linear-gradient(180deg, rgba(16, 185, 129, 0.06) 0%, rgba(18, 24, 38, 0.7) 100%)'
+          background: 'linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, var(--bg-card) 100%)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <CheckCircle2 size={24} color="var(--accent-emerald)" />
               <div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Analysis Successfully Completed
                 </h3>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>

@@ -79,7 +79,7 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
         }
 
 @app.get("/api/health")
-def health_check():
+async def health_check():
     return {
         "status": "online",
         "service": "Kestral Evidence Engine",
@@ -310,14 +310,14 @@ async def camera_detect(
         raise HTTPException(status_code=500, detail=f"Inference error: {str(e)}")
 
 @app.post("/api/camera/reset")
-def reset_camera_tracker():
+async def reset_camera_tracker():
     """Resets the live camera multi-object tracker."""
     p_det, _ = get_camera_detectors()
     p_det.reset_tracker()
     return {"status": "ok", "message": "Camera tracker state successfully reset"}
 
 @app.get("/api/camera/status")
-def get_camera_status():
+async def get_camera_status():
     """Returns camera vision engine status and model telemetry."""
     return {
         "status": "online",
@@ -331,4 +331,25 @@ def get_camera_status():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[BASE_DIR],
+        reload_excludes=[
+            "uploads/*",
+            "uploads/**",
+            "results/*",
+            "results/**",
+            "*.jpg",
+            "*.png",
+            "*.mp4",
+            "*.json",
+            "*.pt",
+            "*.onnx",
+            ".venv/*",
+            ".venv/**"
+        ],
+        timeout_keep_alive=30
+    )

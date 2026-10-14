@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Menu, Cpu } from 'lucide-react';
+import { Menu, Cpu, Sun, Moon } from 'lucide-react';
 import { API_BASE_URL } from './config';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
@@ -14,19 +14,51 @@ export default function App() {
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const failureCountRef = useRef(0);
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('kestral_theme') || 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('kestral_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
 
   const refreshSystemData = async () => {
+    // 1. Lightweight health ping (dedicated 8s timeout)
     try {
-      const healthRes = await axios.get(`${API_BASE_URL}/api/health`, { timeout: 3000 });
-      setBackendOnline(healthRes.status === 200);
+      const healthRes = await axios.get(`${API_BASE_URL}/api/health`, { timeout: 8000 });
+      if (healthRes.status === 200) {
+        failureCountRef.current = 0;
+        setBackendOnline(true);
+      }
+    } catch {
+      failureCountRef.current += 1;
+      // Tolerate transient 1-cycle latency spikes under heavy CPU load
+      if (failureCountRef.current >= 2) {
+        setBackendOnline(false);
+      }
+    }
 
-      const statsRes = await axios.get(`${API_BASE_URL}/api/stats`, { timeout: 3000 });
-      setStats(statsRes.data);
+    // 2. Auxiliary dashboard data (independent from health ping)
+    try {
+      const [statsRes, histRes] = await Promise.allSettled([
+        axios.get(`${API_BASE_URL}/api/stats`, { timeout: 8000 }),
+        axios.get(`${API_BASE_URL}/api/history`, { timeout: 8000 })
+      ]);
 
-      const histRes = await axios.get(`${API_BASE_URL}/api/history`, { timeout: 3000 });
-      setHistory(histRes.data || []);
-    } catch (err) {
-      setBackendOnline(false);
+      if (statsRes.status === 'fulfilled') {
+        setStats(statsRes.value.data);
+      }
+      if (histRes.status === 'fulfilled') {
+        setHistory(histRes.value.data || []);
+      }
+    } catch {
+      // Ignore background telemetry errors
     }
   };
 
@@ -37,7 +69,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-theme={theme}>
       {/* Mobile Top App Bar */}
       <div className="mobile-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -52,25 +84,49 @@ export default function App() {
           }}>
             <Cpu size={18} color="#fff" />
           </div>
-          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>KESTRAL</span>
+          <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>KESTRAL</span>
         </div>
 
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            border: '1px solid var(--border-subtle)',
-            color: '#fff',
-            borderRadius: '8px',
-            padding: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
-        >
-          <Menu size={20} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <button
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} theme`}
+            style={{
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              borderRadius: '8px',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            {theme === 'dark' ? (
+              <Sun size={18} color="var(--accent-amber)" />
+            ) : (
+              <Moon size={18} color="var(--accent-cyan)" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            style={{
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-primary)',
+              borderRadius: '8px',
+              padding: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+          >
+            <Menu size={20} />
+          </button>
+        </div>
       </div>
 
       {/* Backdrop for mobile drawer */}
@@ -91,6 +147,8 @@ export default function App() {
         backendOnline={backendOnline}
         isOpen={mobileMenuOpen}
         onClose={() => setMobileMenuOpen(false)}
+        theme={theme}
+        toggleTheme={toggleTheme}
       />
 
       {/* Main Dynamic Viewport */}

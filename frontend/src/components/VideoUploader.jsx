@@ -87,7 +87,7 @@ export default function VideoUploader({ onTaskCreated, isProcessing }) {
     <div className="glass-panel" style={{ padding: '28px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
         <div>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#fff' }}>Ingest Surveillance Feed</h2>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>Ingest Surveillance Feed</h2>
           <p style={{ fontSize: '0.825rem', color: 'var(--text-secondary)' }}>
             Upload video sequence for multi-object tracking and biometric best-frame extraction
           </p>
@@ -106,8 +106,8 @@ export default function VideoUploader({ onTaskCreated, isProcessing }) {
         onDrop={handleDrop}
         onClick={() => fileInputRef.current?.click()}
         style={{
-          border: `2px dashed ${dragActive ? 'var(--accent-cyan)' : 'rgba(255, 255, 255, 0.14)'}`,
-          backgroundColor: dragActive ? 'rgba(6, 182, 212, 0.05)' : 'rgba(0, 0, 0, 0.25)',
+          border: `2px dashed ${dragActive ? 'var(--accent-cyan)' : 'var(--border-subtle)'}`,
+          backgroundColor: dragActive ? 'rgba(6, 182, 212, 0.08)' : 'var(--bg-input)',
           borderRadius: 'var(--radius-md)',
           padding: '40px 24px',
           textAlign: 'center',
@@ -129,7 +129,7 @@ export default function VideoUploader({ onTaskCreated, isProcessing }) {
           width: '56px',
           height: '56px',
           borderRadius: '50%',
-          backgroundColor: 'rgba(255, 255, 255, 0.04)',
+          backgroundColor: 'var(--bg-card)',
           border: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
@@ -140,7 +140,7 @@ export default function VideoUploader({ onTaskCreated, isProcessing }) {
           <UploadCloud size={28} />
         </div>
 
-        <p style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', marginBottom: '6px' }}>
+        <p style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
           Drag and drop surveillance video here, or <span style={{ color: 'var(--accent-cyan)' }}>browse</span>
         </p>
         <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -156,14 +156,14 @@ export default function VideoUploader({ onTaskCreated, isProcessing }) {
           justifyContent: 'space-between',
           marginTop: '16px',
           padding: '14px 18px',
-          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+          backgroundColor: 'var(--bg-input)',
           borderRadius: 'var(--radius-md)',
           border: '1px solid var(--border-subtle)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <FileVideo size={22} color="var(--accent-cyan)" />
             <div>
-              <p style={{ fontSize: '0.875rem', fontWeight: 600, color: '#fff' }}>
+              <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {selectedFile.name}
               </p>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>

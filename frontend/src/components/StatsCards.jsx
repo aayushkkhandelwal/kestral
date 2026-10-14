@@ -62,7 +62,7 @@ export default function StatsCards({ stats }) {
                 width: '42px',
                 height: '42px',
                 borderRadius: '12px',
-                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                backgroundColor: 'var(--bg-input)',
                 border: `1px solid ${card.color}40`,
                 display: 'flex',
                 alignItems: 'center',
@@ -78,7 +78,7 @@ export default function StatsCards({ stats }) {
                 color: 'var(--text-muted)',
                 padding: '2px 8px',
                 borderRadius: '4px',
-                background: 'rgba(0,0,0,0.2)'
+                background: 'var(--bg-input)'
               }}>
                 {card.sub}
               </span>
@@ -89,7 +89,7 @@ export default function StatsCards({ stats }) {
               fontSize: '2rem',
               fontWeight: 800,
               letterSpacing: '-0.03em',
-              color: '#ffffff',
+              color: 'var(--text-primary)',
               lineHeight: 1.1,
               marginBottom: '4px'
             }}>

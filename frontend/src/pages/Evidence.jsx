@@ -78,7 +78,7 @@ export default function Evidence() {
       {/* Page Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.03em' }}>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
             Biometric Evidence Vault
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
@@ -111,7 +111,7 @@ export default function Evidence() {
           display: 'flex',
           alignItems: 'center',
           gap: '10px',
-          backgroundColor: 'rgba(0, 0, 0, 0.3)',
+          backgroundColor: 'var(--bg-input)',
           border: '1px solid var(--border-subtle)',
           borderRadius: 'var(--radius-sm)',
           padding: '8px 14px',
@@ -127,7 +127,7 @@ export default function Evidence() {
               background: 'transparent',
               border: 'none',
               outline: 'none',
-              color: '#fff',
+              color: 'var(--text-primary)',
               fontSize: '0.85rem',
               width: '100%'
             }}
@@ -143,9 +143,9 @@ export default function Evidence() {
               value={filterGrade}
               onChange={(e) => setFilterGrade(e.target.value)}
               style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                backgroundColor: 'var(--bg-input)',
                 border: '1px solid var(--border-subtle)',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 padding: '8px 12px',
                 borderRadius: 'var(--radius-sm)',
                 fontSize: '0.825rem',
@@ -168,9 +168,9 @@ export default function Evidence() {
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
               style={{
-                backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                backgroundColor: 'var(--bg-input)',
                 border: '1px solid var(--border-subtle)',
-                color: '#fff',
+                color: 'var(--text-primary)',
                 padding: '8px 12px',
                 borderRadius: 'var(--radius-sm)',
                 fontSize: '0.825rem',

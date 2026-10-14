@@ -61,8 +61,11 @@ cd backend
 # Install requirements (if not already installed):
 pip install -r requirements.txt
 
-# Start the FastAPI server:
-uvicorn main:app --reload --port 8000
+# Start the FastAPI server (using python main.py ensures auto-reload excludes uploads/results):
+python main.py
+
+# Alternatively via uvicorn CLI:
+# uvicorn main:app --reload --port 8000 --reload-exclude "uploads/*" --reload-exclude "results/*"
 ```
 Backend API will be running at `http://localhost:8000` (Swagger docs at `http://localhost:8000/docs`).
 

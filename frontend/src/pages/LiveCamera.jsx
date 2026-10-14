@@ -250,6 +250,9 @@ export default function LiveCamera() {
     const vh = video.videoHeight;
     if (!vw || !vh) return;
 
+    // Acquire inference lock synchronously to avoid queueing multiple requests
+    isInferringRef.current = true;
+
     // Offscreen canvas setup
     if (!offscreenCanvasRef.current) {
       offscreenCanvasRef.current = document.createElement('canvas');
@@ -265,15 +268,20 @@ export default function LiveCamera() {
     offCanvas.width = targetW;
     offCanvas.height = targetH;
     const offCtx = offCanvas.getContext('2d');
-    if (!offCtx) return;
+    if (!offCtx) {
+      isInferringRef.current = false;
+      return;
+    }
 
     offCtx.drawImage(video, 0, 0, targetW, targetH);
 
     // Convert to JPEG Blob
     offCanvas.toBlob(async (blob) => {
-      if (!blob) return;
+      if (!blob) {
+        isInferringRef.current = false;
+        return;
+      }
 
-      isInferringRef.current = true;
       const tStart = performance.now();
 
       try {
@@ -684,7 +692,7 @@ export default function LiveCamera() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.03em' }}>
+            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em' }}>
               Live Camera Intelligence
             </h1>
             <span style={{
@@ -722,9 +730,9 @@ export default function LiveCamera() {
             style={{
               padding: '9px 14px',
               fontSize: '0.825rem',
-              background: showSettings ? 'rgba(6, 182, 212, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+              background: showSettings ? 'rgba(6, 182, 212, 0.15)' : 'var(--bg-input)',
               border: showSettings ? '1px solid var(--accent-cyan)' : '1px solid var(--border-subtle)',
-              color: showSettings ? 'var(--accent-cyan)' : '#fff'
+              color: showSettings ? 'var(--accent-cyan)' : 'var(--text-primary)'
             }}
           >
             <Settings size={15} />
@@ -738,7 +746,7 @@ export default function LiveCamera() {
             style={{
               padding: '9px 14px',
               fontSize: '0.825rem',
-              background: 'rgba(255, 255, 255, 0.05)',
+              background: 'var(--bg-input)',
               border: '1px solid var(--border-subtle)',
               color: cameraActive ? 'var(--text-secondary)' : 'var(--text-muted)',
               cursor: cameraActive ? 'pointer' : 'not-allowed'
@@ -899,7 +907,7 @@ export default function LiveCamera() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Settings size={18} color="var(--accent-cyan)" />
-              <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+              <h2 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Inference & Detection Calibration
               </h2>
             </div>
@@ -983,7 +991,7 @@ export default function LiveCamera() {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexWrap: 'wrap', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#fff', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={showBoxes}
@@ -993,7 +1001,7 @@ export default function LiveCamera() {
               <span>Display Bounding Boxes</span>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#fff', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={showLandmarks}
@@ -1003,7 +1011,7 @@ export default function LiveCamera() {
               <span>Display 5-Point Facial Landmarks</span>
             </label>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: '#fff', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'var(--text-primary)', cursor: 'pointer' }}>
               <input
                 type="checkbox"
                 checked={soundEnabled}
@@ -1076,7 +1084,7 @@ export default function LiveCamera() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '50%',
-                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  backgroundColor: 'var(--bg-card)',
                   border: '1px solid var(--border-subtle)',
                   display: 'flex',
                   alignItems: 'center',
@@ -1085,7 +1093,7 @@ export default function LiveCamera() {
                 }}>
                   <Camera size={28} color="var(--text-secondary)" />
                 </div>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff', marginBottom: '6px' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '6px' }}>
                   Laptop Camera Inactive
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '380px', marginBottom: '20px' }}>
@@ -1209,7 +1217,7 @@ export default function LiveCamera() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Users size={18} color="var(--accent-cyan)" />
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   Tracked Persons ({activeTracksList.length})
                 </h3>
               </div>
@@ -1240,7 +1248,7 @@ export default function LiveCamera() {
                       key={track.trackId}
                       style={{
                         padding: '12px 14px',
-                        backgroundColor: is15s ? 'rgba(225, 29, 72, 0.12)' : 'rgba(255, 255, 255, 0.02)',
+                        backgroundColor: is15s ? 'rgba(225, 29, 72, 0.12)' : 'var(--bg-input)',
                         border: is15s ? '1px solid rgba(244, 63, 94, 0.5)' : '1px solid var(--border-subtle)',
                         borderRadius: 'var(--radius-sm)',
                         display: 'flex',
@@ -1267,7 +1275,7 @@ export default function LiveCamera() {
                           </span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 700, color: is15s ? '#fb7185' : '#fff' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem', fontWeight: 700, color: is15s ? '#fb7185' : 'var(--text-primary)' }}>
                           <Clock size={13} color={is15s ? '#f43f5e' : 'var(--accent-cyan)'} />
                           <span>{track.timerText}</span>
                         </div>
@@ -1277,7 +1285,7 @@ export default function LiveCamera() {
                       <div>
                         <div style={{
                           height: '5px',
-                          backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                          backgroundColor: 'var(--border-subtle)',
                           borderRadius: '999px',
                           overflow: 'hidden'
                         }}>
@@ -1310,7 +1318,7 @@ export default function LiveCamera() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ShieldCheck size={18} color="var(--accent-indigo)" />
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   15s Alert Event Log ({detectionHistory.length})
                 </h3>
               </div>

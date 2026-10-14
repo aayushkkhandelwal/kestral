@@ -68,9 +68,9 @@ export default function EvidenceViewer({ track, onClose }) {
           width: '100%',
           maxWidth: '1100px',
           maxHeight: '90vh',
-          backgroundColor: '#0a0e1a',
+          backgroundColor: 'var(--bg-secondary)',
           border: '1px solid var(--border-glow)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8), 0 0 30px var(--accent-indigo-glow)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.4), 0 0 30px var(--accent-indigo-glow)',
           overflowY: 'auto',
           display: 'flex',
           flexDirection: 'column',
@@ -85,7 +85,7 @@ export default function EvidenceViewer({ track, onClose }) {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          backgroundColor: 'rgba(255, 255, 255, 0.02)'
+          backgroundColor: 'var(--bg-input)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
             <div style={{
@@ -102,7 +102,7 @@ export default function EvidenceViewer({ track, onClose }) {
               <ShieldCheck size={20} />
             </div>
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.02em' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
                 Evidence Dossier: Subject #{track.track_id}
               </h2>
               <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -123,7 +123,7 @@ export default function EvidenceViewer({ track, onClose }) {
             <button
               onClick={onClose}
               style={{
-                background: 'rgba(255, 255, 255, 0.05)',
+                background: 'var(--bg-input)',
                 border: '1px solid var(--border-subtle)',
                 color: 'var(--text-secondary)',
                 borderRadius: '8px',
@@ -203,7 +203,7 @@ export default function EvidenceViewer({ track, onClose }) {
               </div>
 
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                <p style={{ fontWeight: 600, color: '#fff', marginBottom: '4px' }}>
+                <p style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                   {track.has_real_face ? 'Confirmed Facial Capture' : 'Subject Turned Away / Context ROI'}
                 </p>
                 <p style={{ fontSize: '0.75rem', color: track.has_real_face ? 'var(--accent-cyan)' : '#fbbf24' }}>
@@ -227,13 +227,13 @@ export default function EvidenceViewer({ track, onClose }) {
             display: 'flex',
             flexDirection: 'column',
             gap: '16px',
-            backgroundColor: 'rgba(0, 0, 0, 0.3)',
+            backgroundColor: 'var(--bg-input)',
             padding: '20px',
             borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border-subtle)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+              <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Biometric Quality Analysis
               </h3>
               <Activity size={16} color="var(--accent-cyan)" />
@@ -245,11 +245,11 @@ export default function EvidenceViewer({ track, onClose }) {
                 <div key={idx}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '4px' }}>
                     <span style={{ color: 'var(--text-secondary)' }}>{m.label}</span>
-                    <span style={{ color: '#fff', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{m.value}</span>
+                    <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{m.value}</span>
                   </div>
                   <div style={{
                     height: '6px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                    backgroundColor: 'var(--border-subtle)',
                     borderRadius: '999px',
                     overflow: 'hidden'
                   }}>
@@ -277,11 +277,11 @@ export default function EvidenceViewer({ track, onClose }) {
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>First Tracked:</span>
-                <span style={{ color: '#fff' }}>T+{track.first_seen_time}s</span>
+                <span style={{ color: 'var(--text-primary)' }}>T+{track.first_seen_time}s</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Last Tracked:</span>
-                <span style={{ color: '#fff' }}>T+{track.last_seen_time}s</span>
+                <span style={{ color: 'var(--text-primary)' }}>T+{track.last_seen_time}s</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Active Duration:</span>
@@ -289,7 +289,7 @@ export default function EvidenceViewer({ track, onClose }) {
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ color: 'var(--text-muted)' }}>Person BBox:</span>
-                <span style={{ color: '#fff' }}>[{track.person_bbox?.join(', ')}]</span>
+                <span style={{ color: 'var(--text-primary)' }}>[{track.person_bbox?.join(', ')}]</span>
               </div>
             </div>
           </div>

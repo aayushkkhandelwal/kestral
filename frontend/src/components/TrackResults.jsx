@@ -19,7 +19,7 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
         }}>
           <UserCheck size={28} />
         </div>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', marginBottom: '6px' }}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
           No Tracked Subjects Yet
         </h3>
         <p style={{ fontSize: '0.825rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto' }}>
@@ -49,7 +49,7 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
         <div>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>
+          <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             Tracked Person Evidence ({tracks.length})
           </h2>
           <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
@@ -143,7 +143,7 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
               {/* Card Body */}
               <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#fff' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                     Subject #{track.track_id}
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -154,7 +154,7 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
 
                 {/* Metrics Breakdown Bar */}
                 <div style={{
-                  backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                  backgroundColor: 'var(--bg-input)',
                   padding: '10px',
                   borderRadius: 'var(--radius-sm)',
                   display: 'grid',
@@ -169,11 +169,11 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Resolution: </span>
-                    <span style={{ color: '#fff' }}>{quality.crop_width}x{quality.crop_height}</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{quality.crop_width}x{quality.crop_height}</span>
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Best Frame: </span>
-                    <span style={{ color: '#fff' }}>#{track.best_frame_idx}</span>
+                    <span style={{ color: 'var(--text-primary)' }}>#{track.best_frame_idx}</span>
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Timestamp: </span>
