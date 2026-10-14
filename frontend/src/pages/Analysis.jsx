@@ -124,6 +124,8 @@ export default function Analysis({ onRefreshStats }) {
             <span>Persons Discovered: {taskStatus.tracks_count || 0}</span>
           </div>
         </div>
+      )}
+
       {/* Failed Task Error Banner */}
       {taskStatus?.status === 'failed' && (
         <div className="glass-panel" style={{
