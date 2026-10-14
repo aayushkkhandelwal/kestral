@@ -37,14 +37,14 @@
 - (none)
 
 ## Session log
-### 2026-10-14 15:45 | Anshika | T0, T2, T3, T4, T6, U1-U5 | main
+### 2026-10-14 16:00 | Anshika | T0, T2, T3, T4, T6, U1-U5 | feat/anshika/core-evidence-pipeline
 - Done:
-  - T0: Guardrail docs moved to root and `docs/`; model downloader `download_models.py` created; YuNet & SFace models fetched; tracker reset & concurrency lock added; real health telemetry & fake stats removed; requirements.txt pinned.
-  - T2: Quality v2 assessor built with normalized Laplacian, landmark pose proxy, CLAHE low-light boost, flags, and runner-ups selection with temporal separation.
-  - T3: SQLite database layer `db.py`, spatiotemporal linking engine `services/linking.py`, ROI polygon endpoints, and transaction endpoints.
-  - T4: Biometric face search router `routers/search.py` using SFace cosine similarity.
-  - T6: Tamper-evident audit trail `routers/audit.py` with demo role access.
-  - U1-U5: Frontend pages created for Transactions (with interactive SVG ROI polygon drawer), Face Search, and Audit Trail; EvidenceViewer upgraded with Quality v2 sub-scores and runner-ups strip; Sidebar and StatsCards updated.
+  - T0: Downloaded official YuNet & SFace ONNX models, added ByteTrack resets, removed fake stats default, wired hardware telemetry in `/api/health`, and added concurrency lock.
+  - T2: Built Quality v2 scoring engine (112x112 size-normalized Laplacian, pose proxy yaw/pitch, exposure balance, CLAHE enhancement, flags, top-4 runner-ups at least 0.5s apart).
+  - T3: Built SQLite schema & CRUD (`backend/data/kestral.db`), ROI polygon zones, feet-dwell calculation with polygon tests, confidence scoring, and ambiguity detection.
+  - T4: Implemented SFace 128D cosine similarity face search with mandatory "similarity only; needs human review" disclaimer.
+  - T6: Implemented tamper-evident SQLite audit log with role-based identity switching (`investigator` vs `admin`).
+  - U1-U5: Interactive frontend pages (Transactions + SVG ROI polygon editor, Face Search with dropzone & top-k, Audit Trail viewer, and EvidenceViewer with Quality v2 sub-scores and runner-ups strip).
 - Files touched:
   - `AGENTS.md`, `docs/*`
   - `backend/config.py`, `backend/db.py`, `backend/main.py`, `backend/requirements.txt`, `.gitignore`
@@ -55,11 +55,16 @@
   - `frontend/src/App.jsx`, `components/Sidebar.jsx`, `components/StatsCards.jsx`, `components/EvidenceViewer.jsx`
   - `frontend/src/pages/Transactions.jsx`, `FaceSearch.jsx`, `AuditLog.jsx`
 - Verified by running (command + result):
-  - `backend/tests/test_quality.py` -> [PASS] All Quality v2 tests successfully verified!
-  - `backend/tests/test_linking.py` -> [PASS] All transaction linking tests successfully verified!
-  - `backend/tests/test_api.py` -> [ALL PASS] All FastAPI integration tests succeeded!
-  - `npm run build` -> built in 303ms with 0 errors.
+  - `backend/.venv/bin/pytest backend/tests/` -> 10 passed in 1.98s
+  - `npm run build` -> built in 271ms with 0 errors
+  - Browser subagent tour -> Dashboard, ATM Transactions + ROI canvas, Face Search, Audit Trail all rendered and functional
+  - `curl http://127.0.0.1:8000/api/health` -> 200 OK with model status
 - Not verified:
-  - Live ATM physical camera feed hardware (tested on synthetic frames and unit suites).
+  - Physical ATM hardware camera feed (tested via synthetic frames and video processing test suite).
+- Pushed:
+  - Branch: `feat/anshika/core-evidence-pipeline`
+  - Commit: `a2adf85`
+  - PR URL: `https://github.com/aayushkkhandelwal/kestral/pull/new/feat/anshika/core-evidence-pipeline`
 - Next:
-  - Run dev servers and demonstrate full end-to-end pipeline.
+  - Merge PR into `main` after team review.
+
