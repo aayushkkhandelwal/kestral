@@ -8,21 +8,28 @@ from services.face_detector import FaceDetector
 from services.face_quality import FaceQualityAssessor
 from services.best_frame import BestFrameSelector
 
+# Global singleton detectors to avoid re-initializing weights on every upload
+_GLOBAL_PERSON_DETECTOR: Optional[PersonDetector] = None
+_GLOBAL_FACE_DETECTOR: Optional[FaceDetector] = None
+_GLOBAL_QUALITY_ASSESSOR: Optional[FaceQualityAssessor] = None
+
+def get_shared_detectors():
+    global _GLOBAL_PERSON_DETECTOR, _GLOBAL_FACE_DETECTOR, _GLOBAL_QUALITY_ASSESSOR
+    if _GLOBAL_PERSON_DETECTOR is None:
+        _GLOBAL_PERSON_DETECTOR = PersonDetector(confidence_threshold=0.35)
+    if _GLOBAL_FACE_DETECTOR is None:
+        _GLOBAL_FACE_DETECTOR = FaceDetector()
+    if _GLOBAL_QUALITY_ASSESSOR is None:
+        _GLOBAL_QUALITY_ASSESSOR = FaceQualityAssessor()
+    return _GLOBAL_PERSON_DETECTOR, _GLOBAL_FACE_DETECTOR, _GLOBAL_QUALITY_ASSESSOR
+
 class VideoProcessor:
     """
-    Orchestrates the end-to-end video pipeline: frame decoding, YOLO tracking,
-    face isolation, quality scoring, and best-frame extraction.
+    High-performance video processing pipeline for multi-object tracking,
+    biometric face isolation, and evidence capture.
     """
-    def __init__(
-        self,
-        model_name: str = "yolov8n.pt",
-        confidence_threshold: float = 0.35,
-        frame_stride: int = 2
-    ):
-        self.frame_stride = max(1, frame_stride)
-        self.person_detector = PersonDetector(model_name=model_name, confidence_threshold=confidence_threshold)
-        self.face_detector = FaceDetector()
-        self.quality_assessor = FaceQualityAssessor()
+    def __init__(self, confidence_threshold: float = 0.35):
+        self.person_detector, self.face_detector, self.quality_assessor = get_shared_detectors()
 
     def process_video(
         self,
@@ -31,9 +38,6 @@ class VideoProcessor:
         task_id: str,
         progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
     ) -> Dict[str, Any]:
-        """
-        Executes pipeline on the provided video file and writes evidence captures to output_dir.
-        """
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found at: {video_path}")
 
@@ -49,6 +53,15 @@ class VideoProcessor:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         duration = round(total_frames / fps, 2) if fps > 0 else 0.0
 
+        # Dynamic stride for fast processing:
+        # 1-10s video: stride 3 | 10-30s video: stride 4 | 30s+ video: stride 5
+        if total_frames > 1200:
+            frame_stride = 5
+        elif total_frames > 400:
+            frame_stride = 4
+        else:
+            frame_stride = 3
+
         selector = BestFrameSelector(output_dir=output_dir)
 
         start_time = time.time()
@@ -56,21 +69,32 @@ class VideoProcessor:
         processed_frames_count = 0
         total_detections_count = 0
 
+        # Initial progress broadcast
+        if progress_callback:
+            progress_callback({
+                "task_id": task_id,
+                "status": "processing",
+                "progress": 2.0,
+                "current_frame": 0,
+                "total_frames": total_frames,
+                "processing_fps": 0.0,
+                "tracks_count": 0
+            })
+
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                # Frame sampling stride
-                if frame_idx % self.frame_stride == 0:
+                if frame_idx % frame_stride == 0:
                     timestamp_sec = round(frame_idx / fps, 2)
 
                     # 1. Detect and track persons
                     detections = self.person_detector.track(frame, persist=True)
                     total_detections_count += len(detections)
 
-                    # 2. For each tracked person, locate face and score quality
+                    # 2. Extract biometric evidence for each track
                     for det in detections:
                         track_id = det["track_id"]
                         person_bbox = det["bbox"]
@@ -83,12 +107,11 @@ class VideoProcessor:
                                 is_heuristic=face_info.get("is_heuristic", False)
                             )
                         else:
-                            # Quality assess upper-body person crop as fallback
                             px1, py1, px2, py2 = person_bbox
                             fallback_crop = frame[py1:py2, px1:px2]
                             quality = self.quality_assessor.assess_crop(fallback_crop, is_heuristic=True)
 
-                        # 3. Update track candidate
+                        # 3. Update best candidate
                         selector.update_track(
                             track_id=track_id,
                             frame_idx=frame_idx,
@@ -101,9 +124,9 @@ class VideoProcessor:
 
                     processed_frames_count += 1
 
-                    # Send progress updates every few frames
-                    if progress_callback and (processed_frames_count % 3 == 0 or frame_idx >= total_frames - self.frame_stride):
-                        pct = min(100, round((frame_idx / max(1, total_frames)) * 100, 1))
+                    # Send smooth real-time progress updates every 2 sampled frames
+                    if progress_callback and (processed_frames_count % 2 == 0 or frame_idx >= total_frames - frame_stride):
+                        pct = min(99.0, max(2.0, round((frame_idx / max(1, total_frames)) * 100, 1)))
                         elapsed = time.time() - start_time
                         curr_fps = round(processed_frames_count / max(0.001, elapsed), 1)
                         progress_callback({
@@ -121,7 +144,7 @@ class VideoProcessor:
         finally:
             cap.release()
 
-        # Finalize and save best evidence frames
+        # Finalize evidence crops
         relative_url_prefix = f"/results/{task_id}"
         tracks_summary = selector.finalize(relative_url_prefix=relative_url_prefix)
 
@@ -153,7 +176,7 @@ class VideoProcessor:
             "tracks": tracks_summary
         }
 
-        # Save results JSON into the task directory
+        # Save results JSON
         results_json_path = os.path.join(output_dir, "results.json")
         with open(results_json_path, "w") as f:
             json.dump(result_payload, f, indent=2)

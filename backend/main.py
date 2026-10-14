@@ -51,7 +51,7 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
             TASKS[task_id].update(p)
 
     try:
-        processor = VideoProcessor(confidence_threshold=0.35, frame_stride=2)
+        processor = VideoProcessor(confidence_threshold=0.35)
         results = processor.process_video(
             video_path=video_path,
             output_dir=output_dir,

@@ -124,6 +124,37 @@ export default function Analysis({ onRefreshStats }) {
             <span>Persons Discovered: {taskStatus.tracks_count || 0}</span>
           </div>
         </div>
+      {/* Failed Task Error Banner */}
+      {taskStatus?.status === 'failed' && (
+        <div className="glass-panel" style={{
+          padding: '20px 24px',
+          marginTop: '24px',
+          border: '1px solid rgba(244, 63, 94, 0.4)',
+          backgroundColor: 'rgba(244, 63, 94, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <AlertCircle size={24} color="#f43f5e" />
+            <div>
+              <h4 style={{ color: '#fff', fontSize: '1rem', fontWeight: 700 }}>Processing Error</h4>
+              <p style={{ color: '#fb7185', fontSize: '0.825rem' }}>
+                {taskStatus.error || 'Video could not be processed. Please try again with another video sequence.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setActiveTaskId(null);
+              setTaskStatus(null);
+            }}
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '8px 16px' }}
+          >
+            Dismiss
+          </button>
+        </div>
       )}
 
       {/* Completed Results Summary Banner */}
