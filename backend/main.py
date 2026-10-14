@@ -324,29 +324,45 @@ def sync_camera_detect(
 
     return {
         "status": "success",
+        "timestamp": round(time.time(), 3),
+        "frame_width": w,
+        "frame_height": h,
         "frame_dimensions": [w, h],
+        "faces_detected": len(detected_faces),
+        "people_detected": len(people),
+        "persons_detected": len(people),
+        "faces": detected_faces,
+        "people": people,
+        "processing_time_ms": round(t_diff * 1000, 1),
         "inference_time_ms": round(t_diff * 1000, 1),
         "inference_fps": inf_fps,
-        "persons_detected": len(people),
-        "faces_detected": len(detected_faces),
-        "people": people,
-        "faces": detected_faces
+        "detector_backend": "OpenCV YuNet (5-point facial landmarks)"
     }
 
 @app.post("/api/camera/detect")
 async def camera_detect(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    frame: Optional[UploadFile] = File(None),
     conf_thresh: float = 0.35,
-    face_conf_thresh: float = 0.35
+    face_conf_thresh: float = 0.35,
+    conf_threshold: Optional[float] = None,
+    face_conf_threshold: Optional[float] = None
 ):
+    upload = file or frame
+    if upload is None:
+        raise HTTPException(status_code=400, detail="Missing image file. Submit multipart 'file' or 'frame'.")
+    effective_conf = conf_threshold if conf_threshold is not None else conf_thresh
+    effective_face_conf = face_conf_threshold if face_conf_threshold is not None else face_conf_thresh
+    contents = await upload.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty frame uploaded.")
     try:
-        contents = await file.read()
         res = await asyncio.get_event_loop().run_in_executor(
             executor,
             sync_camera_detect,
             contents,
-            conf_thresh,
-            face_conf_thresh
+            effective_conf,
+            effective_face_conf
         )
         return res
     except Exception as e:
@@ -364,7 +380,13 @@ async def get_camera_status():
     """Returns camera vision engine status and model telemetry."""
     p_det, f_det = get_camera_detectors()
     return {
-        "status": "ready",
+        "status": "online",
+        "service": "Kestral Live Camera Intelligence",
+        "person_tracker": "YOLOv8 ByteTrack",
+        "face_detector": "OpenCV YuNet Deep Neural Network",
+        "landmarks": "5-point (eyes, nose, mouth corners)",
+        "default_interval_ms": 600,
+        "cuda_available": bool(torch.cuda.is_available()) if HAS_TORCH else False,
         "person_detector_ready": p_det.model is not None,
         "face_detector_ready": f_det.face_model_loaded,
         "face_recognizer_ready": f_det.face_recognizer_loaded,

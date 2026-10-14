@@ -1,9 +1,12 @@
 import os
+import sys
 import time
 import unittest
 import numpy as np
 import cv2
 from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.dirname(__file__))
 import main
 from services.face_detector import FaceDetector
 from services.person_detector import PersonDetector

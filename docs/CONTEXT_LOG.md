@@ -55,7 +55,7 @@
   - `frontend/src/App.jsx`, `components/Sidebar.jsx`, `components/StatsCards.jsx`, `components/EvidenceViewer.jsx`
   - `frontend/src/pages/Transactions.jsx`, `FaceSearch.jsx`, `AuditLog.jsx`
 - Verified by running (command + result):
-  - `backend/.venv/bin/pytest backend/tests/` -> 10 passed in 1.98s
+  - `backend/.venv/bin/pytest backend/tests/ backend/test_camera.py` -> 16 passed in 3.12s
   - `npm run build` -> built in 271ms with 0 errors
   - Browser subagent tour -> Dashboard, ATM Transactions + ROI canvas, Face Search, Audit Trail all rendered and functional
   - `curl http://127.0.0.1:8000/api/health` -> 200 OK with model status
