@@ -17,6 +17,10 @@ class PersonDetector:
         local_weight = os.path.join(backend_dir, "yolov8n.pt")
         target_model = local_weight if os.path.exists(local_weight) else model_name
 
+        # Load optimized forensic tracker config (90-frame buffer)
+        custom_tracker = os.path.join(backend_dir, "config", "custom_bytetrack.yaml")
+        self.tracker_cfg = custom_tracker if os.path.exists(custom_tracker) else "bytetrack.yaml"
+
         try:
             self.model = YOLO(target_model)
         except Exception as e:
@@ -36,6 +40,7 @@ class PersonDetector:
             results = self.model.track(
                 source=frame,
                 persist=persist,
+                tracker=self.tracker_cfg,
                 classes=[0],
                 conf=self.confidence_threshold,
                 imgsz=480,

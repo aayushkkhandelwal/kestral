@@ -9,8 +9,9 @@ class BestFrameSelector:
     evidence frame and face crop per tracked individual.
     Prioritizes verified facial captures with eyes/nose/mouth over back-of-head or occluded frames.
     """
-    def __init__(self, output_dir: str):
+    def __init__(self, output_dir: str, consolidate_identities: bool = True):
         self.output_dir = output_dir
+        self.consolidate_identities = consolidate_identities
         os.makedirs(output_dir, exist_ok=True)
         self.tracks: Dict[int, Dict[str, Any]] = {}
 
@@ -76,6 +77,15 @@ class BestFrameSelector:
                     t["best_face_crop"] = face_info.get("face_crop").copy()
 
     def finalize(self, relative_url_prefix: str = "") -> List[Dict[str, Any]]:
+        # Consolidate non-overlapping fragmented tracks of the same individual
+        if self.consolidate_identities and len(self.tracks) > 1:
+            try:
+                from services.identity_consolidator import IdentityConsolidator
+                consolidator = IdentityConsolidator()
+                self.tracks = consolidator.consolidate_tracks(self.tracks)
+            except Exception as e:
+                print(f"[BestFrameSelector] Identity consolidation warning: {e}")
+
         finalized_tracks: List[Dict[str, Any]] = []
 
         for track_id, data in self.tracks.items():
@@ -141,7 +151,8 @@ class BestFrameSelector:
                 "crop_url": f"{relative_url_prefix}/{face_crop_filename}".replace("//", "/"),
                 "full_frame_url": f"{relative_url_prefix}/{full_frame_filename}".replace("//", "/"),
                 "face_sha256": face_sha256,
-                "full_frame_sha256": full_frame_sha256
+                "full_frame_sha256": full_frame_sha256,
+                "consolidated_track_ids": data.get("consolidated_track_ids", [track_id])
             }
             finalized_tracks.append(clean_summary)
 

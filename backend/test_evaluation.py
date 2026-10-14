@@ -313,5 +313,117 @@ class TestPhase2ApiEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class TestIdentityConsolidation(unittest.TestCase):
+    """6. Biometric & Appearance Identity Consolidation (Re-ID) Tests"""
+
+    def test_consolidation_merges_non_overlapping_same_person(self):
+        from services.identity_consolidator import IdentityConsolidator
+        consolidator = IdentityConsolidator()
+
+        # Create two non-overlapping tracks with identical clothing & face
+        frame = np.full((300, 300, 3), (180, 150, 240), dtype=np.uint8) # pink shirt
+        face = np.full((100, 100, 3), (120, 160, 220), dtype=np.uint8)
+
+        tracks = {
+            2: {
+                "track_id": 2,
+                "first_seen_frame": 10,
+                "last_seen_frame": 50,
+                "first_seen_time": 1.0,
+                "last_seen_time": 5.0,
+                "total_detections": 40,
+                "best_score": 90.0,
+                "best_has_real_face": True,
+                "best_frame_idx": 30,
+                "best_timestamp": 3.0,
+                "best_person_bbox": [50, 50, 250, 280],
+                "best_face_bbox": [80, 50, 180, 150],
+                "best_quality": {"overall_score": 90.0},
+                "best_full_frame": frame,
+                "best_face_crop": face,
+                "all_scores": [85.0, 90.0]
+            },
+            5: {
+                "track_id": 5,
+                "first_seen_frame": 100,
+                "last_seen_frame": 140,
+                "first_seen_time": 10.0,
+                "last_seen_time": 14.0, # Completely disjoint in time!
+                "total_detections": 40,
+                "best_score": 81.0,
+                "best_has_real_face": True,
+                "best_frame_idx": 120,
+                "best_timestamp": 12.0,
+                "best_person_bbox": [50, 50, 250, 280],
+                "best_face_bbox": [80, 50, 180, 150],
+                "best_quality": {"overall_score": 81.0},
+                "best_full_frame": frame,
+                "best_face_crop": face,
+                "all_scores": [80.0, 81.0]
+            }
+        }
+
+        consolidated = consolidator.consolidate_tracks(tracks)
+        self.assertEqual(len(consolidated), 1, "Non-overlapping track fragments of same person must consolidate into 1 subject")
+        self.assertIn(2, consolidated)
+        merged = consolidated[2]
+        self.assertEqual(merged["best_score"], 90.0, "Must preserve the highest quality face evidence crop")
+        self.assertEqual(merged["first_seen_time"], 1.0)
+        self.assertEqual(merged["last_seen_time"], 14.0)
+        self.assertEqual(merged["consolidated_track_ids"], [2, 5])
+
+    def test_consolidation_rejects_simultaneous_tracks(self):
+        """Two people present in the same frame simultaneously must NEVER be merged!"""
+        from services.identity_consolidator import IdentityConsolidator
+        consolidator = IdentityConsolidator()
+
+        frame = np.full((300, 300, 3), (180, 150, 240), dtype=np.uint8)
+        face = np.full((100, 100, 3), (120, 160, 220), dtype=np.uint8)
+
+        # Tracks 2 and 3 overlap in time (both visible from t=2.0 to t=4.0)
+        tracks = {
+            2: {
+                "track_id": 2,
+                "first_seen_frame": 10,
+                "last_seen_frame": 50,
+                "first_seen_time": 1.0,
+                "last_seen_time": 5.0,
+                "total_detections": 40,
+                "best_score": 90.0,
+                "best_has_real_face": True,
+                "best_frame_idx": 30,
+                "best_timestamp": 3.0,
+                "best_person_bbox": [50, 50, 250, 280],
+                "best_face_bbox": [80, 50, 180, 150],
+                "best_quality": {"overall_score": 90.0},
+                "best_full_frame": frame,
+                "best_face_crop": face,
+                "all_scores": [90.0]
+            },
+            3: {
+                "track_id": 3,
+                "first_seen_frame": 20,
+                "last_seen_frame": 60,
+                "first_seen_time": 2.0,
+                "last_seen_time": 6.0, # Temporal overlap!
+                "total_detections": 40,
+                "best_score": 88.0,
+                "best_has_real_face": True,
+                "best_frame_idx": 35,
+                "best_timestamp": 3.5,
+                "best_person_bbox": [50, 50, 250, 280],
+                "best_face_bbox": [80, 50, 180, 150],
+                "best_quality": {"overall_score": 88.0},
+                "best_full_frame": frame,
+                "best_face_crop": face,
+                "all_scores": [88.0]
+            }
+        }
+
+        consolidated = consolidator.consolidate_tracks(tracks)
+        self.assertEqual(len(consolidated), 2, "Simultaneous tracks must never be merged")
+
+
 if __name__ == "__main__":
     unittest.main()
+

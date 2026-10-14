@@ -1,0 +1,10 @@
+# Kestral AI — Optimized Forensic Surveillance ByteTrack Configuration
+# Extends tracking memory buffer across head turns, posture shifts, and momentary occlusions.
+
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.10
+new_track_thresh: 0.35
+track_buffer: 90
+match_thresh: 0.75
+fuse_score: True
