@@ -6,6 +6,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    proxyClientMaxBodySize: '500mb',
+    serverActions: {
+      bodySizeLimit: '500mb',
+    },
+  },
   allowedDevOrigins: [
     '192.168.2.105',
     'localhost',
