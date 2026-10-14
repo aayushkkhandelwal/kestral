@@ -3,6 +3,7 @@ import {
   LayoutDashboard, 
   Video, 
   ShieldCheck, 
+  Camera,
   Cpu, 
   Activity, 
   Terminal,
@@ -20,6 +21,7 @@ export default function Sidebar({
 }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'live-camera', label: 'Live Camera', icon: Camera },
     { id: 'analysis', label: 'Video Analysis', icon: Video },
     { id: 'evidence', label: 'Evidence Vault', icon: ShieldCheck },
   ];

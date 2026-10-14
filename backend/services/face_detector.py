@@ -131,3 +131,126 @@ class FaceDetector:
             }
 
         return None
+
+    def detect_faces(
+        self, frame: np.ndarray, score_threshold: Optional[float] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Detects all faces in the provided frame using deep learning face detection.
+        Extracts face bounding boxes, confidence scores, and 5 facial landmarks
+        (right eye, left eye, nose tip, right mouth corner, left mouth corner).
+        """
+        if frame is None or frame.size == 0 or self.yunet is None:
+            return []
+
+        h, w = frame.shape[:2]
+        thresh = score_threshold if score_threshold is not None else self.score_threshold
+
+        try:
+            self.yunet.setInputSize((w, h))
+            if hasattr(self.yunet, "setScoreThreshold"):
+                self.yunet.setScoreThreshold(thresh)
+            _, faces = self.yunet.detect(frame)
+
+            if faces is None or len(faces) == 0:
+                return []
+
+            results = []
+            for face in faces:
+                conf = float(face[-1])
+                if conf < thresh:
+                    continue
+
+                fx = int(face[0])
+                fy = int(face[1])
+                fw = int(face[2])
+                fh = int(face[3])
+
+                x1 = int(max(0, min(w - 1, fx)))
+                y1 = int(max(0, min(h - 1, fy)))
+                x2 = int(max(0, min(w, fx + fw)))
+                y2 = int(max(0, min(h, fy + fh)))
+
+                if x2 <= x1 or y2 <= y1:
+                    continue
+
+                # 5 facial landmarks: right eye, left eye, nose tip, right mouth, left mouth
+                landmarks_raw = face[4:14].reshape(5, 2)
+                landmarks = []
+                for pt in landmarks_raw:
+                    lx = int(max(0, min(w - 1, pt[0])))
+                    ly = int(max(0, min(h - 1, pt[1])))
+                    landmarks.append([lx, ly])
+
+                landmarks_named = {
+                    "right_eye": landmarks[0],
+                    "left_eye": landmarks[1],
+                    "nose": landmarks[2],
+                    "right_mouth": landmarks[3],
+                    "left_mouth": landmarks[4]
+                }
+
+                results.append({
+                    "bbox": [x1, y1, x2, y2],
+                    "width": x2 - x1,
+                    "height": y2 - y1,
+                    "confidence": round(conf, 3),
+                    "landmarks": landmarks,
+                    "landmarks_named": landmarks_named
+                })
+
+            return results
+        except Exception as e:
+            print(f"[FaceDetector] detect_faces error: {e}")
+            return []
+
+    @staticmethod
+    def associate_faces_with_people(
+        people: List[Dict[str, Any]], faces: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Spatially associates detected faces with tracked persons.
+        Matches a face to a person if the face center or substantial area falls
+        within the person bounding box.
+        """
+        for face in faces:
+            face["matched_track_id"] = None
+
+        for person in people:
+            px1, py1, px2, py2 = person["bbox"]
+            best_face = None
+            best_overlap = 0.0
+
+            for face in faces:
+                if face.get("matched_track_id") is not None:
+                    continue
+
+                fx1, fy1, fx2, fy2 = face["bbox"]
+                fcx = (fx1 + fx2) / 2.0
+                fcy = (fy1 + fy2) / 2.0
+
+                # Face center inside person bounding box
+                if px1 <= fcx <= px2 and py1 <= fcy <= py2:
+                    ix1 = max(px1, fx1)
+                    iy1 = max(py1, fy1)
+                    ix2 = min(px2, fx2)
+                    iy2 = min(py2, fy2)
+                    inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                    f_area = max(1, (fx2 - fx1) * (fy2 - fy1))
+                    overlap = inter_area / f_area
+
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_face = face
+
+            if best_face is not None and best_overlap >= 0.30:
+                best_face["matched_track_id"] = person["track_id"]
+                person["face_bbox"] = best_face["bbox"]
+                person["face_confidence"] = best_face["confidence"]
+                person["landmarks"] = best_face.get("landmarks", [])
+            else:
+                person["face_bbox"] = None
+                person["face_confidence"] = None
+                person["landmarks"] = []
+
+        return people, faces

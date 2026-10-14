@@ -96,3 +96,18 @@ class PersonDetector:
             print(f"[PersonDetector] Tracking error: {e}")
 
         return detections
+
+    def reset_tracker(self):
+        """
+        Clears temporal tracking state and resets ByteTrack tracker.
+        """
+        self._fallback_counter = 1
+        try:
+            if hasattr(self.model, "predictor") and self.model.predictor is not None:
+                if hasattr(self.model.predictor, "trackers"):
+                    for tracker in self.model.predictor.trackers:
+                        if hasattr(tracker, "reset"):
+                            tracker.reset()
+                    self.model.predictor.trackers = []
+        except Exception as e:
+            print(f"[PersonDetector] reset_tracker warning: {e}")

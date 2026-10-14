@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Analysis from './pages/Analysis';
 import Evidence from './pages/Evidence';
+import LiveCamera from './pages/LiveCamera';
 
 export default function App() {
   const [activePage, setActivePage] = useState('dashboard');
@@ -100,7 +101,12 @@ export default function App() {
             history={history}
             onNavigateToAnalysis={() => setActivePage('analysis')}
             onNavigateToEvidence={() => setActivePage('evidence')}
+            onNavigateToLiveCamera={() => setActivePage('live-camera')}
           />
+        )}
+
+        {activePage === 'live-camera' && (
+          <LiveCamera />
         )}
 
         {activePage === 'analysis' && (

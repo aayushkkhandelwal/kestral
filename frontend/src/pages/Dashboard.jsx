@@ -8,15 +8,22 @@ import {
   ShieldCheck, 
   Video, 
   Cpu, 
-  Film 
+  Film,
+  Camera
 } from 'lucide-react';
 import StatsCards from '../components/StatsCards';
 
-export default function Dashboard({ stats, history = [], onNavigateToAnalysis, onNavigateToEvidence }) {
+export default function Dashboard({ 
+  stats, 
+  history = [], 
+  onNavigateToAnalysis, 
+  onNavigateToEvidence,
+  onNavigateToLiveCamera
+}) {
   return (
     <div>
       {/* Page Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#fff', letterSpacing: '-0.03em' }}>
             Mission Control & Analytics
@@ -26,14 +33,34 @@ export default function Dashboard({ stats, history = [], onNavigateToAnalysis, o
           </p>
         </div>
 
-        <button
-          onClick={onNavigateToAnalysis}
-          className="btn btn-primary"
-          style={{ padding: '10px 20px', fontSize: '0.875rem' }}
-        >
-          <Play size={16} fill="currentColor" />
-          <span>New Video Analysis</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {onNavigateToLiveCamera && (
+            <button
+              onClick={onNavigateToLiveCamera}
+              className="btn"
+              style={{
+                padding: '10px 18px',
+                fontSize: '0.875rem',
+                backgroundColor: 'rgba(6, 182, 212, 0.12)',
+                border: '1px solid rgba(6, 182, 212, 0.35)',
+                color: 'var(--accent-cyan)',
+                fontWeight: 600
+              }}
+            >
+              <Camera size={16} />
+              <span>Launch Live Camera</span>
+            </button>
+          )}
+
+          <button
+            onClick={onNavigateToAnalysis}
+            className="btn btn-primary"
+            style={{ padding: '10px 20px', fontSize: '0.875rem' }}
+          >
+            <Play size={16} fill="currentColor" />
+            <span>New Video Analysis</span>
+          </button>
+        </div>
       </div>
 
       {/* Aggregate KPI Stats Cards */}

@@ -3,14 +3,19 @@ import uuid
 import json
 import shutil
 import asyncio
-from typing import Dict, Any, List
+import time
+from typing import Dict, Any, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
+import cv2
+import numpy as np
 from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from services.video_processor import VideoProcessor
+from services.person_detector import PersonDetector
+from services.face_detector import FaceDetector
 
 # Paths setup
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -208,6 +213,120 @@ def get_aggregate_stats():
         "high_quality_evidence_captured": total_hq,
         "system_average_fidelity": avg_quality,
         "active_models": ["YOLOv8-Tracking", "Cascade-Biometrics", "Laplacian-Fidelity-v2"]
+    }
+
+# ==========================================
+# Live Camera Vision Pipeline & Endpoints
+# ==========================================
+_CAMERA_PERSON_DETECTOR: Optional[PersonDetector] = None
+_CAMERA_FACE_DETECTOR: Optional[FaceDetector] = None
+
+def get_camera_detectors():
+    global _CAMERA_PERSON_DETECTOR, _CAMERA_FACE_DETECTOR
+    if _CAMERA_PERSON_DETECTOR is None:
+        _CAMERA_PERSON_DETECTOR = PersonDetector(confidence_threshold=0.35)
+    if _CAMERA_FACE_DETECTOR is None:
+        _CAMERA_FACE_DETECTOR = FaceDetector(score_threshold=0.35)
+    return _CAMERA_PERSON_DETECTOR, _CAMERA_FACE_DETECTOR
+
+def sync_camera_detect(
+    image_bytes: bytes,
+    conf_thresh: float = 0.35,
+    face_conf_thresh: float = 0.35
+) -> Dict[str, Any]:
+    """Processes a single live camera frame for person tracking and face detection."""
+    t0 = time.time()
+    np_arr = np.frombuffer(image_bytes, np.uint8)
+    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+    if frame is None or frame.size == 0:
+        raise ValueError("Could not decode image frame. Please verify image payload.")
+
+    h, w = frame.shape[:2]
+    if h < 10 or w < 10:
+        raise ValueError(f"Frame resolution ({w}x{h}) is too small.")
+
+    p_det, f_det = get_camera_detectors()
+    p_det.confidence_threshold = conf_thresh
+
+    # 1. Detect and track people
+    people = p_det.track(frame, persist=True)
+
+    # 2. Detect faces with landmarks
+    faces = f_det.detect_faces(frame, score_threshold=face_conf_thresh)
+
+    # 3. Spatially associate faces with person tracks
+    people, faces = FaceDetector.associate_faces_with_people(people, faces)
+
+    elapsed_ms = round((time.time() - t0) * 1000, 1)
+
+    return {
+        "timestamp": round(time.time(), 3),
+        "frame_width": w,
+        "frame_height": h,
+        "faces_detected": len(faces),
+        "people_detected": len(people),
+        "faces": faces,
+        "people": people,
+        "processing_time_ms": elapsed_ms,
+        "detector_backend": "OpenCV YuNet (5-point facial landmarks)"
+    }
+
+@app.post("/api/camera/detect")
+async def camera_detect(
+    file: Optional[UploadFile] = File(None),
+    frame: Optional[UploadFile] = File(None),
+    conf_threshold: float = 0.35,
+    face_conf_threshold: float = 0.35
+):
+    """
+    Real-time live camera frame detection endpoint.
+    Accepts raw compressed JPEG/PNG/WebP frame, extracts YOLO person tracks and deep face landmarks.
+    """
+    upload = file or frame
+    if upload is None:
+        raise HTTPException(status_code=400, detail="Missing image file. Submit multipart 'file' or 'frame'.")
+
+    contents = await upload.read()
+    if not contents or len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Empty frame payload received.")
+
+    if len(contents) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Frame payload exceeds 15MB limit.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(
+            executor,
+            sync_camera_detect,
+            contents,
+            conf_threshold,
+            face_conf_threshold
+        )
+        return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        print(f"[Camera Detect Error] {e}")
+        raise HTTPException(status_code=500, detail=f"Inference error: {str(e)}")
+
+@app.post("/api/camera/reset")
+def reset_camera_tracker():
+    """Resets the live camera multi-object tracker."""
+    p_det, _ = get_camera_detectors()
+    p_det.reset_tracker()
+    return {"status": "ok", "message": "Camera tracker state successfully reset"}
+
+@app.get("/api/camera/status")
+def get_camera_status():
+    """Returns camera vision engine status and model telemetry."""
+    return {
+        "status": "online",
+        "service": "Kestral Live Camera Intelligence",
+        "person_tracker": "YOLOv8 ByteTrack",
+        "face_detector": "OpenCV YuNet Deep Neural Network",
+        "landmarks": "5-point (eyes, nose, mouth corners)",
+        "default_interval_ms": 600,
+        "cuda_available": False
     }
 
 if __name__ == "__main__":
