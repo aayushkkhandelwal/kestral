@@ -7,11 +7,11 @@ class BestFrameSelector:
     """
     Manages identity tracks across video sequences and isolates the single highest quality
     evidence frame and face crop per tracked individual.
+    Prioritizes verified facial captures with eyes/nose/mouth over back-of-head or occluded frames.
     """
     def __init__(self, output_dir: str):
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
-        # track_id -> track data dictionary
         self.tracks: Dict[int, Dict[str, Any]] = {}
 
     def update_track(
@@ -24,10 +24,8 @@ class BestFrameSelector:
         face_info: Optional[Dict[str, Any]],
         quality_metrics: Dict[str, Any]
     ):
-        """
-        Registers an observation for a tracked subject and retains the candidate with superior quality metrics.
-        """
         score = quality_metrics.get("overall_score", 0.0)
+        has_real_face = quality_metrics.get("has_real_face", False)
 
         if track_id not in self.tracks:
             self.tracks[track_id] = {
@@ -38,6 +36,7 @@ class BestFrameSelector:
                 "last_seen_time": timestamp_sec,
                 "total_detections": 1,
                 "best_score": score,
+                "best_has_real_face": has_real_face,
                 "best_frame_idx": frame_idx,
                 "best_timestamp": timestamp_sec,
                 "best_person_bbox": person_bbox,
@@ -54,9 +53,19 @@ class BestFrameSelector:
             t["total_detections"] += 1
             t["all_scores"].append(score)
 
-            # Update best frame if current frame scores higher
-            if score > t["best_score"] or t["best_face_crop"] is None:
+            prev_real = t.get("best_has_real_face", False)
+            should_replace = False
+
+            if has_real_face and not prev_real:
+                # Immediate upgrade: Found a real face compared to previously only seeing back of head!
+                should_replace = True
+            elif has_real_face == prev_real:
+                if score > t["best_score"] or t["best_face_crop"] is None:
+                    should_replace = True
+
+            if should_replace:
                 t["best_score"] = score
+                t["best_has_real_face"] = has_real_face
                 t["best_frame_idx"] = frame_idx
                 t["best_timestamp"] = timestamp_sec
                 t["best_person_bbox"] = person_bbox
@@ -67,19 +76,9 @@ class BestFrameSelector:
                     t["best_face_crop"] = face_info.get("face_crop").copy()
 
     def finalize(self, relative_url_prefix: str = "") -> List[Dict[str, Any]]:
-        """
-        Saves all top-rated evidence crops to disk and compiles finalized track summary statistics.
-        
-        Args:
-            relative_url_prefix: URL path prefix for frontend asset retrieval (e.g. '/results/task_123/')
-            
-        Returns:
-            List of track summaries with saved image paths and performance analytics.
-        """
         finalized_tracks: List[Dict[str, Any]] = []
 
         for track_id, data in self.tracks.items():
-            # Save cropped face / best evidence crop
             face_crop_filename = f"track_{track_id}_face.jpg"
             full_frame_filename = f"track_{track_id}_full.jpg"
             
@@ -91,8 +90,8 @@ class BestFrameSelector:
             px1, py1, px2, py2 = data["best_person_bbox"]
             cv2.rectangle(annotated_frame, (px1, py1), (px2, py2), (16, 185, 129), 2) # Emerald person bbox
             
-            # Label banner
-            label = f"ID #{track_id} | Score: {data['best_score']}%"
+            has_face = data.get("best_has_real_face", False)
+            label = f"ID #{track_id} | Face: {'YES' if has_face else 'OCCLUDED'}"
             cv2.putText(
                 annotated_frame,
                 label,
@@ -104,7 +103,7 @@ class BestFrameSelector:
                 cv2.LINE_AA
             )
 
-            if data["best_face_bbox"]:
+            if data["best_face_bbox"] and has_face:
                 fx1, fy1, fx2, fy2 = data["best_face_bbox"]
                 cv2.rectangle(annotated_frame, (fx1, fy1), (fx2, fy2), (6, 182, 212), 2) # Cyan face bbox
 
@@ -114,7 +113,6 @@ class BestFrameSelector:
             if data["best_face_crop"] is not None and data["best_face_crop"].size > 0:
                 cv2.imwrite(face_crop_path, data["best_face_crop"])
             else:
-                # Fallback to person crop if face crop wasn't saved
                 person_crop = data["best_full_frame"][py1:py2, px1:px2]
                 cv2.imwrite(face_crop_path, person_crop)
 
@@ -130,6 +128,7 @@ class BestFrameSelector:
                 "best_frame_idx": data["best_frame_idx"],
                 "best_timestamp": round(data["best_timestamp"], 2),
                 "best_score": data["best_score"],
+                "has_real_face": has_face,
                 "average_score": avg_score,
                 "quality": data["best_quality"],
                 "person_bbox": data["best_person_bbox"],
@@ -139,6 +138,6 @@ class BestFrameSelector:
             }
             finalized_tracks.append(clean_summary)
 
-        # Sort tracks by highest quality score first
-        finalized_tracks.sort(key=lambda x: x["best_score"], reverse=True)
+        # Sort: verified faces first, then by score
+        finalized_tracks.sort(key=lambda x: (x["has_real_face"], x["best_score"]), reverse=True)
         return finalized_tracks

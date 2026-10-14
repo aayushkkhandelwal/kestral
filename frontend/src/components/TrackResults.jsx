@@ -29,14 +29,17 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
     );
   }
 
-  const getGradeBadge = (grade, score) => {
+  const getGradeBadge = (grade, score, hasRealFace) => {
+    if (!hasRealFace) {
+      return <span className="badge badge-fair">⚠️ Face Not Visible</span>;
+    }
     switch (grade) {
       case 'EXCELLENT':
-        return <span className="badge badge-excellent">★ {score}% Excellent</span>;
+        return <span className="badge badge-excellent">★ {score}% Face</span>;
       case 'GOOD':
-        return <span className="badge badge-good">✓ {score}% Good</span>;
+        return <span className="badge badge-good">✓ {score}% Face</span>;
       case 'FAIR':
-        return <span className="badge badge-fair">~ {score}% Fair</span>;
+        return <span className="badge badge-fair">~ {score}% Face</span>;
       default:
         return <span className="badge badge-poor">! {score}% Low</span>;
     }
@@ -116,7 +119,7 @@ export default function TrackResults({ tracks = [], onSelectTrack }) {
 
                 {/* Score badge overlay */}
                 <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
-                  {getGradeBadge(quality.grade, track.best_score)}
+                  {getGradeBadge(quality.grade, track.best_score, track.has_real_face)}
                 </div>
 
                 {/* ID badge overlay */}

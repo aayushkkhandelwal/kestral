@@ -100,16 +100,17 @@ class VideoProcessor:
                         person_bbox = det["bbox"]
 
                         face_info = self.face_detector.detect_face_in_person(frame, person_bbox)
+                        has_real_face = bool(face_info.get("has_real_face", False)) if face_info else False
 
                         if face_info and face_info.get("face_crop") is not None:
                             quality = self.quality_assessor.assess_crop(
                                 face_info["face_crop"],
-                                is_heuristic=face_info.get("is_heuristic", False)
+                                has_real_face=has_real_face
                             )
                         else:
                             px1, py1, px2, py2 = person_bbox
                             fallback_crop = frame[py1:py2, px1:px2]
-                            quality = self.quality_assessor.assess_crop(fallback_crop, is_heuristic=True)
+                            quality = self.quality_assessor.assess_crop(fallback_crop, has_real_face=False)
 
                         # 3. Update best candidate
                         selector.update_track(

@@ -204,13 +204,19 @@ export default function EvidenceViewer({ track, onClose }) {
 
               <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                 <p style={{ fontWeight: 600, color: '#fff', marginBottom: '4px' }}>
-                  Isolated Biometric Crop
+                  {track.has_real_face ? 'Confirmed Facial Capture' : 'Subject Turned Away / Context ROI'}
                 </p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                  {quality.is_heuristic ? 'Estimated head/upper-body ROI' : 'Confirmed facial cascade detection'}
+                <p style={{ fontSize: '0.75rem', color: track.has_real_face ? 'var(--accent-cyan)' : '#fbbf24' }}>
+                  {track.has_real_face 
+                    ? 'Verified facial features (eyes, nose, mouth detected by neural net)' 
+                    : 'Face was turned away from camera (showing back/side of head)'}
                 </p>
                 <div style={{ marginTop: '6px', display: 'flex', gap: '6px' }}>
-                  <span className="badge badge-excellent">{quality.grade} FIDELITY</span>
+                  {track.has_real_face ? (
+                    <span className="badge badge-excellent">★ CONFIRMED FACE</span>
+                  ) : (
+                    <span className="badge badge-fair">⚠️ FACE NOT VISIBLE (TURNED AWAY)</span>
+                  )}
                 </div>
               </div>
             </div>
