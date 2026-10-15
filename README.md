@@ -135,7 +135,7 @@ kestral/
 │   ├── Dockerfile                    # Production container image
 │   ├── main.py                       # Unified Application Entrypoint
 │   └── requirements.txt              # Pinned dependencies
-├── atm-vision-ai-dashboard/          # Next.js 16 + React 19 Frontend
+├── frontend/                         # Next.js 16 + React 19 Frontend
 ├── docs/                             # Architecture & Sequence Documentation
 │   ├── er-diagram.mmd
 │   ├── database-relationships.mmd
@@ -235,7 +235,7 @@ Default administrator bootstrapped automatically:
 
 #### 3. Frontend Setup
 ```powershell
-cd atm-vision-ai-dashboard
+cd frontend
 npm install
 npm run dev
 ```

@@ -51,7 +51,7 @@ services:
 
   frontend:
     build:
-      context: ./atm-vision-ai-dashboard
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: kestral-frontend
     restart: always

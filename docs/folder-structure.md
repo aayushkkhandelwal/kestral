@@ -101,7 +101,7 @@ kestral/
 │   ├── Dockerfile                    # Container definition
 │   ├── main.py                       # Unified Application Entrypoint
 │   └── requirements.txt              # Pinned dependencies
-├── atm-vision-ai-dashboard/          # Next.js 16 + React 19 Frontend
+├── frontend/                         # Next.js 16 + React 19 Frontend
 ├── docs/                             # Architecture & Sequence Documentation
 ├── docker-compose.yml                # Multi-container orchestration (Postgres + Backend + Frontend)
 ├── .dockerignore
