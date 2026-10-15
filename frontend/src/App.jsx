@@ -10,9 +10,10 @@ import LiveCamera from './pages/LiveCamera';
 import Transactions from './pages/Transactions';
 import FaceSearch from './pages/FaceSearch';
 import AuditLog from './pages/AuditLog';
+import LandingPage from './pages/LandingPage';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState('landing');
   const [backendOnline, setBackendOnline] = useState(false);
   const [healthInfo, setHealthInfo] = useState(null);
   const [stats, setStats] = useState(null);
@@ -79,6 +80,25 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
+  if (activePage === 'landing') {
+    return (
+      <div className="landing-mode" data-theme={theme}>
+        <LandingPage
+          onEnterApp={() => setActivePage('dashboard')}
+          onNavigateToAnalysis={() => setActivePage('analysis')}
+          onNavigateToEvidence={() => setActivePage('evidence')}
+          onNavigateToSearch={() => setActivePage('search')}
+          onNavigateToTransactions={() => setActivePage('transactions')}
+          onNavigateToLiveCamera={() => setActivePage('live-camera')}
+          stats={stats}
+          backendOnline={backendOnline}
+          theme={theme}
+          toggleTheme={toggleTheme}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-container" data-theme={theme}>
       {/* Mobile Top App Bar */}
@@ -88,7 +108,7 @@ export default function App() {
             width: '32px',
             height: '32px',
             borderRadius: '8px',
-            background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo))',
+            background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-indigo))',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'

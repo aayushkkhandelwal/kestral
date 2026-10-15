@@ -120,5 +120,33 @@
 - Next:
   - Rehearse pitch with team and open/merge PR to `main`.
 
+---
+
+### 2026-10-15 03:50 IST — Anshika (Quality / Eval / Integrator)
+- Task: U6 — Rw Studio Dribbble Inspired Landing Page & Deep Nocturnal Violet/Indigo Theme Overhaul
+- Done:
+  - Built high-aesthetic `frontend/src/pages/LandingPage.jsx` inspired by the user's reference design (`https://dribbble.com/shots/25713450-Landingpage` by Rw Studio).
+  - Implemented floating glass navbar with live backend status badge (`ENGINE READY`), theme toggle, and direct navigation buttons.
+  - Implemented vector nocturnal cityscape hero SVG with glowing ambient backdrops, gradient typography, and dual CTAs ("Launch Mission Control" and "Watch Live Camera").
+  - Implemented 4-metric counter ribbon: 112x112 Normalized Quality, 128-D Biometric Embeddings, +/-10s Temporal Windowing, and 100% Chain-of-Custody Audit.
+  - Implemented 3-pillar capability cards (Targeted Windowing, Quality v2 Scoring & AI Deblur, Biometric Search & Custody).
+  - Implemented 5-stage architecture pipeline (Ingest & Window -> YOLOv8 Person Track -> YuNet Face Extract -> SFace 128D Embed -> Court Evidence Dossier) and bottom CTA banner.
+  - Overhauled global theme in `frontend/src/index.css`: deep nocturnal violet/indigo background (`#0a0618`, `#120b2a`), violet/magenta glowing accents (`#a855f7`, `#d946ef`), electric cyan highlight (`#38bdf8`), and glowing gradient primary buttons.
+  - Wired full-screen `landing-mode` in `frontend/src/App.jsx` with default landing entry and seamless transition to Mission Control; added "Landing Page" quick navigation item to `frontend/src/components/Sidebar.jsx`.
+- Files touched:
+  - `frontend/src/pages/LandingPage.jsx`
+  - `frontend/src/App.jsx`
+  - `frontend/src/components/Sidebar.jsx`
+  - `frontend/src/index.css`
+  - `docs/CONTEXT_LOG.md`
+- Verified by running:
+  - `npm run build` -> built in 325ms with 0 errors
+  - Browser subagent inspection -> Verified hero, live badge, metrics ribbon, feature cards, architecture pipeline, and dashboard transitions
+  - Recorded session video -> `landing_page_demo_1792016490398.webp`
+- Pushed:
+  - Branch: `feat/anshika/core-evidence-pipeline`
+- Next:
+  - Open PR to `main`.
+
 
 

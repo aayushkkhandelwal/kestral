@@ -1,5 +1,5 @@
-import React from 'react';
 import { 
+  Sparkles,
   LayoutDashboard, 
   Video, 
   ShieldCheck, 
@@ -29,6 +29,7 @@ export default function Sidebar({
   toggleTheme
 }) {
   const navItems = [
+    { id: 'landing', label: 'Landing Page', icon: Sparkles },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'ATM Transactions', icon: CreditCard },
     { id: 'evidence', label: 'Evidence Vault', icon: ShieldCheck },
@@ -67,11 +68,11 @@ export default function Sidebar({
               width: '38px',
               height: '38px',
               borderRadius: '10px',
-              background: 'linear-gradient(135deg, var(--accent-cyan), var(--accent-indigo))',
+              background: 'linear-gradient(135deg, var(--accent-purple), var(--accent-indigo))',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 0 16px var(--accent-cyan-glow)'
+              boxShadow: '0 0 16px var(--accent-purple-glow)'
             }}>
               <Cpu size={22} color="#ffffff" />
             </div>
@@ -79,7 +80,7 @@ export default function Sidebar({
               <h1 style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>
                 KESTRAL
               </h1>
-              <p style={{ fontSize: '0.68rem', color: 'var(--accent-cyan)', fontWeight: 600, letterSpacing: '0.08em' }}>
+              <p style={{ fontSize: '0.68rem', color: 'var(--accent-magenta)', fontWeight: 700, letterSpacing: '0.08em' }}>
                 ATM VISION INTELLIGENCE
               </p>
             </div>
