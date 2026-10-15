@@ -24,7 +24,8 @@ WORKDIR /app
 
 # Install Python requirements
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -c "import lap; from ultralytics import YOLO; print('Dependencies validated: lap and ultralytics import successfully')"
 
 # Copy backend codebase
 COPY . /app
@@ -35,9 +36,10 @@ RUN mkdir -p /app/uploads /app/results /app/faces /app/frames /app/exports \
 
 USER kestral
 
+ENV PORT=8000
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]

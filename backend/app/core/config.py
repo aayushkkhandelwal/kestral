@@ -1,7 +1,7 @@
 import os
 from functools import lru_cache
 from typing import List, Union
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -28,6 +28,33 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 20
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if not v or not isinstance(v, str):
+            return v
+        v = v.strip()
+        # Normalization for hosted PostgreSQL providers (Supabase, Render, Railway, Heroku)
+        if v.startswith("postgres://"):
+            v = "postgresql+psycopg://" + v[len("postgres://"):]
+        elif v.startswith("postgresql://") and not v.startswith("postgresql+"):
+            v = "postgresql+psycopg://" + v[len("postgresql://"):]
+        return v
+
+    @field_validator("DATABASE_URL", mode="after")
+    @classmethod
+    def validate_production_database_url(cls, v: str, info: ValidationInfo) -> str:
+        env = info.data.get("ENVIRONMENT", "development")
+        if env and str(env).lower() == "production":
+            # In production, prevent silent fallback to unreachable localhost:5432
+            if "@localhost" in v or "@127.0.0.1" in v:
+                raise ValueError(
+                    "DATABASE_URL points to localhost/127.0.0.1 while ENVIRONMENT=production. "
+                    "A valid production PostgreSQL connection string (such as Supabase or managed PostgreSQL) must be provided."
+                )
+        return v
+
 
     # Security & JWT
     JWT_SECRET_KEY: str = Field(

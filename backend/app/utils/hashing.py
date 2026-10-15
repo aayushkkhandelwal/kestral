@@ -15,3 +15,6 @@ def compute_sha256_file(filepath: str, chunk_size: int = 65536) -> str:
 def compute_sha256_bytes(data: bytes) -> str:
     """Computes SHA-256 hash of a bytes object."""
     return hashlib.sha256(data).hexdigest().lower()
+
+# Compatibility alias for services importing calculate_sha256
+calculate_sha256 = compute_sha256_file

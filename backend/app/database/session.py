@@ -9,7 +9,13 @@ settings = get_settings()
 
 def create_configured_engine(db_url: str):
     """Creates a configured SQLAlchemy engine with appropriate connection pool parameters."""
+    if db_url.startswith("postgres://"):
+        db_url = "postgresql+psycopg://" + db_url[len("postgres://"):]
+    elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+"):
+        db_url = "postgresql+psycopg://" + db_url[len("postgresql://"):]
+
     if db_url.startswith("sqlite"):
+
         return create_engine(
             db_url,
             connect_args={"check_same_thread": False},
