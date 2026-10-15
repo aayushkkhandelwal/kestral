@@ -167,6 +167,6 @@ class BestFrameSelector:
             return ""
         h = hashlib.sha256()
         with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
+            for chunk in iter(lambda: f.read(1048576), b""):
                 h.update(chunk)
         return h.hexdigest()

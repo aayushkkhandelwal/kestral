@@ -1,6 +1,7 @@
 import cv2
 import os
 import json
+import numpy as np
 from services.identity_consolidator import IdentityConsolidator
 
 c = IdentityConsolidator()
@@ -48,8 +49,8 @@ for i in range(len(tracks)):
         overlap = min(end1, end2) - max(start1, start2)
 
         # Check clothing similarity
-        h1 = c._extract_clothing_hist(full1, t1["person_bbox"])
-        h2 = c._extract_clothing_hist(full2, t2["person_bbox"])
+        h1 = c._extract_clothing_hist(full1, t1["person_bbox"]) if full1 is not None else None
+        h2 = c._extract_clothing_hist(full2, t2["person_bbox"]) if full2 is not None else None
         cloth_sim = 0.0
         if h1 is not None and h2 is not None:
             cloth_sim = max(0.0, 1.0 - float(cv2.compareHist(h1, h2, cv2.HISTCMP_BHATTACHARYYA)))

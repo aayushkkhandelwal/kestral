@@ -145,7 +145,7 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
                 vid = db.query(Video).filter(Video.filename.like(f"%{task_id}%")).first()
                 if not vid:
                     rel_vid_path = os.path.relpath(video_path, BASE_DIR).replace("\\", "/")
-                    vid_hash = calculate_sha256(video_path) if os.path.exists(video_path) else None
+                    vid_hash = results.get("integrity", {}).get("original_video", {}).get("sha256") or (calculate_sha256(video_path) if os.path.exists(video_path) else None)
                     vid = Video(
                         filename=os.path.basename(video_path),
                         file_path=rel_vid_path,
@@ -185,8 +185,8 @@ def sync_process_video_wrapper(task_id: str, video_path: str, output_dir: str):
                     crop_abs = os.path.join(BASE_DIR, crop_url.lstrip("/"))
                     frame_abs = os.path.join(BASE_DIR, frame_url.lstrip("/"))
 
-                    crop_hash = calculate_sha256(crop_abs) if os.path.exists(crop_abs) else None
-                    frame_hash = calculate_sha256(frame_abs) if os.path.exists(frame_abs) else None
+                    crop_hash = t_item.get("face_sha256") or (calculate_sha256(crop_abs) if os.path.exists(crop_abs) else None)
+                    frame_hash = t_item.get("full_frame_sha256") or (calculate_sha256(frame_abs) if os.path.exists(frame_abs) else None)
 
                     evidence = FaceEvidence(
                         track_id=track.track_id,

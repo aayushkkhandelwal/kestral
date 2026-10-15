@@ -163,9 +163,32 @@ class VideoProcessor:
         finally:
             cap.release()
 
-        # Finalize evidence crops
+        # Update progress so UI knows decoding is complete and post-processing has begun
+        if progress_callback:
+            progress_callback({
+                "task_id": task_id,
+                "status": "processing",
+                "progress": 99.2,
+                "current_frame": total_frames,
+                "total_frames": total_frames,
+                "processing_fps": 0.0,
+                "tracks_count": len(selector.tracks)
+            })
+
+        # Finalize evidence crops & consolidate identities
         relative_url_prefix = f"/results/{task_id}"
         tracks_summary = selector.finalize(relative_url_prefix=relative_url_prefix)
+
+        if progress_callback:
+            progress_callback({
+                "task_id": task_id,
+                "status": "processing",
+                "progress": 99.7,
+                "current_frame": total_frames,
+                "total_frames": total_frames,
+                "processing_fps": 0.0,
+                "tracks_count": len(tracks_summary)
+            })
 
         elapsed_total = round(time.time() - start_time, 2)
         avg_quality = (
