@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-10-15 11:39:50",
+  "hardware": {
+    "device_name": "Apple Silicon M-Series GPU (MPS Metal Acceleration)",
+    "accel_type": "MPS",
+    "platform": "Darwin 25.5.0 (arm64)",
+    "processor": "arm",
+    "cpu_count": 8,
+    "torch_version": "2.14.1",
+    "opencv_version": "5.0.0"
+  },
+  "slide_6_efficiency": {
+    "video_name": "072de597_atm_video.mp4",
+    "video_duration_s": 247.9,
+    "total_frames": 7433,
+    "baseline_time_s": 47.21,
+    "baseline_fps": 19.7,
+    "baseline_frames": 930,
+    "window_target_time_s": 120.0,
+    "window_margin_s": 60.0,
+    "window_span_s": 120.0,
+    "windowed_time_s": 29.66,
+    "windowed_fps": 24.27,
+    "windowed_frames": 720,
+    "time_saved_pct": 37.2,
+    "speedup_factor": 1.59,
+    "cctv_1hr_full_time_s": 685.9,
+    "cctv_1hr_window_time_s": 29.7,
+    "cctv_1hr_speedup": 23.1
+  },
+  "slide_9_robustness": {
+    "dim_light": {
+      "trials": 60,
+      "detected": 16,
+      "detection_rate_pct": 26.7,
+      "clahe_triggered_pct": 100.0,
+      "dim_flag_pct": 56.2
+    },
+    "side_angle": {
+      "trials": 72,
+      "detected": 40,
+      "detection_rate_pct": 55.6,
+      "side_pose_flagged_pct": 35.0
+    },
+    "occlusion": {
+      "mask_trials": 12,
+      "mask_detected": 7,
+      "mask_detection_pct": 58.3,
+      "cap_trials": 12,
+      "cap_detected": 1,
+      "cap_detection_pct": 8.3,
+      "overall_occlusion_pct": 33.3
+    },
+    "low_resolution": {
+      "by_resolution": {
+        "96x96": 58.3,
+        "64x64": 58.3,
+        "48x48": 58.3,
+        "32x32": 50.0,
+        "24x24": 33.3
+      },
+      "overall_pct": 51.7,
+      "min_operational_box": "32x32 px"
+    },
+    "queuing": {
+      "scenarios_tested": 5,
+      "correct_attributions": 5,
+      "link_accuracy_pct": 100.0,
+      "ambiguity_detection_accuracy_pct": 100.0,
+      "false_attribution_rate_pct": 0.0
+    }
+  },
+  "slide_12_results": {
+    "total_test_videos": 9,
+    "overall_link_accuracy_pct": 100.0,
+    "best_frame_agreement_pct": 100.0,
+    "face_detection_rate_pct": 41.8,
+    "avg_pipeline_fps": 22.0,
+    "hardware_info": {
+      "device_name": "Apple Silicon M-Series GPU (MPS Metal Acceleration)",
+      "accel_type": "MPS",
+      "platform": "Darwin 25.5.0 (arm64)",
+      "processor": "arm",
+      "cpu_count": 8,
+      "torch_version": "2.14.1",
+      "opencv_version": "5.0.0"
+    }
+  }
+}

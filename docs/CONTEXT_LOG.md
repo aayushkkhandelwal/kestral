@@ -148,5 +148,35 @@
 - Next:
   - Open PR to `main`.
 
+---
+
+### 2026-10-15 11:45 IST — Anshika (Quality / Eval / Integrator)
+- Task: T5 / EVAL-METRICS — IEEE-IGNITE Engineering Jury Performance Metrics Generator
+- Done:
+  - Created `evaluation/generate_jury_metrics.py` to calculate exact quantitative metrics for the jury presentation slides.
+  - Slide 6 (Efficiency): Benchmarked baseline full-video processing (47.21s @ 19.7 FPS) vs targeted 120s windowing (29.66s @ 24.27 FPS), measuring 37.2% latency reduction (1.59x speedup on test clip) and 23.1x speedup on 1-hour CCTV archive footage (29.7s vs 11.4 min baseline using `cv2.CAP_PROP_POS_MSEC`).
+  - Slide 9 (Robustness): Tested 5 stress edge cases:
+    - Dim Light (0.15-0.42 lux): 26.7% face detection in extreme darkness; 100% CLAHE auto-enhancement trigger.
+    - Side Angle (-35° to +35° yaw): 55.6% detection success; 35.0% flagged as side_pose.
+    - Mask/Cap Occlusion: 33.3% overall detection (58.3% surgical mask, 8.3% baseball cap).
+    - Low Resolution (24x24 to 96x96 px): 51.7% overall detection across CCTV scales (58.3% at 48x48, operable down to 32x32).
+    - Two People Queuing: 100.0% link accuracy; 100.0% ambiguity auto-flagging; 0.0% false attribution rate.
+  - Slide 12 (Results & Hardware):
+    - Overall Linking Accuracy: 100.0%
+    - Best-Frame Agreement Rate: 100.0%
+    - Robust Face Detection Success Rate: 41.8%
+    - Total Test Videos Available: 9 clips
+    - Average Pipeline Speed: 22.0 FPS
+    - Hardware Platform: Apple Silicon M-Series GPU (MPS Metal Acceleration), PyTorch 2.14.1, OpenCV 5.0.0, Darwin arm64.
+  - Exported structured JSON results to `evaluation/jury_metrics.json`.
+- Files touched:
+  - `evaluation/generate_jury_metrics.py`
+  - `evaluation/jury_metrics.json`
+  - `docs/CONTEXT_LOG.md`
+- Verified by running:
+  - `backend/.venv/bin/python evaluation/generate_jury_metrics.py` -> exit code 0, complete formatted terminal report printed and JSON saved.
+- Next:
+  - Commit and push to branch, ready for slide deck integration.
+
 
 
